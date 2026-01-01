@@ -36,6 +36,7 @@
 - 🔒 **Single Instance** — Only one app window at a time
 
 
+
 ## 🚀 Installation
 
 ### Windows
