@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VYRA</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script>
+      // Disable right-click context menu and dev tools shortcuts in production
+      document.addEventListener('contextmenu', e => e.preventDefault());
+      document.addEventListener('keydown', e => {
+        // Block F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+U
+        if (e.key === 'F12' || 
+            (e.ctrlKey && e.shiftKey && (e.key === 'I' || e.key === 'i' || e.key === 'J' || e.key === 'j')) ||
+            (e.ctrlKey && (e.key === 'U' || e.key === 'u'))) {
+          e.preventDefault();
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "default",
+  "description": "Default capabilities for Metrolist",
+  "windows": ["main", "miniplayer"],
+  "permissions": [
+    "core:default",
+    "core:window:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-maximize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-set-size",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-always-on-top",
+    "core:window:allow-create",
+    "core:webview:default",
+    "core:webview:allow-create-webview-window",
+    "core:webview:allow-internal-toggle-devtools",
+    "core:event:default",
+    "core:event:allow-listen",
+    "core:event:allow-emit",
+    "shell:allow-open"
+  ]
+}

@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* iOS-style base styles */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+  user-select: none;
+}
+
+/* Custom scrollbar - iOS style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(128, 128, 128, 0.5);
+}
+
+/* Draggable title bar area */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* iOS-style blur effect */
+.ios-blur {
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Smooth transitions */
+.ios-transition {
+  transition: all 233ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* iOS-style active state */
+.ios-active:active {
+  transform: scale(0.97);
+  opacity: 0.8;
+}
+
+/* Range slider iOS style */
+input[type="range"] {
+  -webkit-appearance: none;
+  background: transparent;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  height: 13px;
+  width: 13px;
+  border-radius: 50%;
+  background: #ffffff;
+  cursor: pointer;
+  margin-top: -5px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  width: 100%;
+  height: 3px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 3px;
+}
+
+/* Light mode slider */
+.slider-light::-webkit-slider-runnable-track {
+  background: #c0c0c0;
+}
+
+.slider-light::-webkit-slider-thumb {
+  background: #007AFF;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Dark mode slider */
+.slider-dark::-webkit-slider-runnable-track {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.slider-dark::-webkit-slider-thumb {
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+/* Hide scrollbar for horizontal scroll sections */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Tooltip animation */
+@keyframes tooltip-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
