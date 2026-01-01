@@ -12,9 +12,7 @@
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/releases">
     <img src="https://img.shields.io/github/v/release/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="Release">
   </a>
-  <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
-    <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
-  </a>
+  
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC">
     <img src="https://img.shields.io/github/stars/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="Stars">
   </a>
