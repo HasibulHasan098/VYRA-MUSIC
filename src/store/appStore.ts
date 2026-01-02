@@ -65,6 +65,26 @@ interface AppState {
   equalizerBands: number[]
   // Accent color
   accentColor: string
+  // Keybinds
+  globalKeybindsEnabled: boolean
+  inAppKeybinds: {
+    playPause: string
+    next: string
+    previous: string
+    volumeUp: string
+    volumeDown: string
+    mute: string
+    like: string
+    lyrics: string
+  }
+  globalKeybinds: {
+    playPause: string
+    next: string
+    previous: string
+    volumeUp: string
+    volumeDown: string
+    mute: string
+  }
   // User playlists
   userPlaylists: UserPlaylist[]
   selectedUserPlaylist: UserPlaylist | null
@@ -101,6 +121,12 @@ interface AppState {
   resetEqualizer: () => void
   // Accent color
   setAccentColor: (color: string) => void
+  // Keybinds
+  toggleGlobalKeybinds: () => void
+  setInAppKeybind: (action: string, key: string) => void
+  setGlobalKeybind: (action: string, key: string) => void
+  resetInAppKeybinds: () => void
+  resetGlobalKeybinds: () => void
   // Caching functions
   toggleCacheEnabled: () => void
   addToCache: (track: Song) => void
@@ -157,6 +183,26 @@ export const useAppStore = create<AppState>()(
       equalizerBands: [0, 0, 0, 0, 0, 0], // 60Hz, 150Hz, 400Hz, 1kHz, 2.4kHz, 15kHz
       // Accent color
       accentColor: '#007AFF', // iOS blue default
+      // Keybinds
+      globalKeybindsEnabled: false,
+      inAppKeybinds: {
+        playPause: 'Space',
+        next: 'ArrowRight',
+        previous: 'ArrowLeft',
+        volumeUp: 'ArrowUp',
+        volumeDown: 'ArrowDown',
+        mute: 'M',
+        like: 'L',
+        lyrics: 'K',
+      },
+      globalKeybinds: {
+        playPause: 'Ctrl+Space',
+        next: 'Ctrl+Right',
+        previous: 'Ctrl+Left',
+        volumeUp: 'Ctrl+Up',
+        volumeDown: 'Ctrl+Down',
+        mute: 'Ctrl+M',
+      },
       // User playlists
       userPlaylists: [],
       selectedUserPlaylist: null,
@@ -554,6 +600,74 @@ export const useAppStore = create<AppState>()(
         document.documentElement.style.setProperty('--accent-color', color)
       },
 
+      // Keybinds
+      toggleGlobalKeybinds: () => {
+        const newValue = !get().globalKeybindsEnabled
+        set({ globalKeybindsEnabled: newValue })
+        // Register/unregister global shortcuts with Tauri
+        if (typeof window !== 'undefined' && window.__TAURI__) {
+          import('@tauri-apps/api/core').then(({ invoke }) => {
+            invoke('set_global_shortcuts', { enabled: newValue, shortcuts: get().globalKeybinds }).catch(() => {})
+          })
+        }
+      },
+
+      setInAppKeybind: (action, key) => {
+        set({
+          inAppKeybinds: {
+            ...get().inAppKeybinds,
+            [action]: key
+          }
+        })
+      },
+
+      setGlobalKeybind: (action, key) => {
+        const newKeybinds = {
+          ...get().globalKeybinds,
+          [action]: key
+        }
+        set({ globalKeybinds: newKeybinds })
+        // Update global shortcuts if enabled
+        if (get().globalKeybindsEnabled && typeof window !== 'undefined' && window.__TAURI__) {
+          import('@tauri-apps/api/core').then(({ invoke }) => {
+            invoke('set_global_shortcuts', { enabled: true, shortcuts: newKeybinds }).catch(() => {})
+          })
+        }
+      },
+
+      resetInAppKeybinds: () => {
+        set({
+          inAppKeybinds: {
+            playPause: 'Space',
+            next: 'ArrowRight',
+            previous: 'ArrowLeft',
+            volumeUp: 'ArrowUp',
+            volumeDown: 'ArrowDown',
+            mute: 'M',
+            like: 'L',
+            lyrics: 'K',
+          }
+        })
+      },
+
+      resetGlobalKeybinds: () => {
+        const defaultKeybinds = {
+          playPause: 'Ctrl+Space',
+          next: 'Ctrl+Right',
+          previous: 'Ctrl+Left',
+          volumeUp: 'Ctrl+Up',
+          volumeDown: 'Ctrl+Down',
+          mute: 'Ctrl+M',
+        }
+        set({ globalKeybinds: defaultKeybinds })
+        // Update global shortcuts if enabled
+        if (get().globalKeybindsEnabled && typeof window !== 'undefined' && window.__TAURI__) {
+          import('@tauri-apps/api/core').then(({ invoke }) => {
+            invoke('set_global_shortcuts', { enabled: true, shortcuts: defaultKeybinds }).catch(() => {})
+          })
+        }
+      },
+
       // Playlist functions
       createPlaylist: (name) => {
         const id = `playlist-${Date.now()}`
@@ -647,6 +761,9 @@ export const useAppStore = create<AppState>()(
         equalizerPreset: state.equalizerPreset,
         equalizerBands: state.equalizerBands,
         accentColor: state.accentColor,
+        globalKeybindsEnabled: state.globalKeybindsEnabled,
+        inAppKeybinds: state.inAppKeybinds,
+        globalKeybinds: state.globalKeybinds,
         userPlaylists: state.userPlaylists
       })
     }

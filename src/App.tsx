@@ -33,8 +33,8 @@ import FullscreenPlayer from './components/FullscreenPlayer'
 import LyricsPanel from './components/LyricsPanel'
 
 export default function App() {
-  const { currentView, darkMode, searchQuery, showLyrics, toggleLyrics } = useAppStore()
-  const { currentTrack, restorePlayback, savePosition, initAudio, togglePlay, nextTrack, prevTrack } = usePlayerStore()
+  const { currentView, darkMode, searchQuery, showLyrics, toggleLyrics, inAppKeybinds } = useAppStore()
+  const { currentTrack, restorePlayback, savePosition, initAudio, togglePlay, nextTrack, prevTrack, setVolume, volume, toggleLike } = usePlayerStore()
   const [isFullscreen, setIsFullscreen] = useState(false)
 
   // Check if this is the mini player window
@@ -47,6 +47,90 @@ export default function App() {
       delete (window as any).toggleFullscreenPlayer
     }
   }, [])
+
+  // Block all default browser/system keybinds and only allow user's custom keybinds
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't block if typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return
+      }
+
+      // Build the current key combo string
+      const parts: string[] = []
+      if (e.ctrlKey) parts.push('Ctrl')
+      if (e.altKey) parts.push('Alt')
+      if (e.shiftKey) parts.push('Shift')
+      if (e.metaKey) parts.push('Meta')
+      
+      const keyName = e.key === ' ' ? 'Space' :
+        e.key === 'ArrowUp' ? 'Up' :
+        e.key === 'ArrowDown' ? 'Down' :
+        e.key === 'ArrowLeft' ? 'Left' :
+        e.key === 'ArrowRight' ? 'Right' :
+        e.key.length === 1 ? e.key.toUpperCase() : e.key
+      
+      if (!['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+        parts.push(keyName)
+      }
+      
+      const combo = parts.join('+')
+      const singleKey = e.key === ' ' ? 'Space' : e.key
+
+      // Check if this matches any user keybind
+      let matched = false
+
+      // Check in-app keybinds (can be single key or combo)
+      if (inAppKeybinds.playPause && (singleKey === inAppKeybinds.playPause || combo === inAppKeybinds.playPause)) {
+        e.preventDefault()
+        togglePlay()
+        matched = true
+      } else if (inAppKeybinds.next && (singleKey === inAppKeybinds.next || combo === inAppKeybinds.next)) {
+        e.preventDefault()
+        nextTrack()
+        matched = true
+      } else if (inAppKeybinds.previous && (singleKey === inAppKeybinds.previous || combo === inAppKeybinds.previous)) {
+        e.preventDefault()
+        prevTrack()
+        matched = true
+      } else if (inAppKeybinds.volumeUp && (singleKey === inAppKeybinds.volumeUp || combo === inAppKeybinds.volumeUp)) {
+        e.preventDefault()
+        setVolume(Math.min(1, volume + 0.1))
+        matched = true
+      } else if (inAppKeybinds.volumeDown && (singleKey === inAppKeybinds.volumeDown || combo === inAppKeybinds.volumeDown)) {
+        e.preventDefault()
+        setVolume(Math.max(0, volume - 0.1))
+        matched = true
+      } else if (inAppKeybinds.mute && (singleKey.toLowerCase() === inAppKeybinds.mute.toLowerCase() || combo === inAppKeybinds.mute)) {
+        e.preventDefault()
+        setVolume(volume > 0 ? 0 : 0.5)
+        matched = true
+      } else if (inAppKeybinds.like && (singleKey.toLowerCase() === inAppKeybinds.like.toLowerCase() || combo === inAppKeybinds.like)) {
+        e.preventDefault()
+        if (currentTrack) toggleLike(currentTrack)
+        matched = true
+      } else if (inAppKeybinds.lyrics && (singleKey.toLowerCase() === inAppKeybinds.lyrics.toLowerCase() || combo === inAppKeybinds.lyrics)) {
+        e.preventDefault()
+        toggleLyrics()
+        matched = true
+      }
+
+      // Block all Ctrl/Alt/Meta/Shift combos that aren't user keybinds (prevents browser defaults like Ctrl+P, Ctrl+S, Ctrl+Shift+I)
+      if (!matched && (e.ctrlKey || e.altKey || e.metaKey) && !['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)) {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+      
+      // Also block F12 (dev tools)
+      if (e.key === 'F12') {
+        e.preventDefault()
+        e.stopPropagation()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [inAppKeybinds, togglePlay, nextTrack, prevTrack, setVolume, volume, currentTrack, toggleLike, toggleLyrics])
 
   // Restore playback state on app start
   useEffect(() => {

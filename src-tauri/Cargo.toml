@@ -1,6 +1,6 @@
 [package]
 name = "vyra"
-version = "1.0.3"
+version = "1.0.4"
 description = "VYRA - YouTube Music Desktop Client"
 authors = ["fast hand"]
 edition = "2021"

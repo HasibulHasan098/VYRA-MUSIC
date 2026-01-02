@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Inno Setup 6 Revision History</title>
+<base href="https://jrsoftware.org/" />
+<style type="text/css">
+    :root {
+      color-scheme: light dark;
+      --main-fg-color: light-dark(#282828, #d6d6d6);
+      --main-bg-color: light-dark(white, #1f1f1f);
+      --link-fg-color: light-dark(hsl(206, 100%, 37%), hsl(206, 100%, 50%));
+      --link-hover-fg-color: light-dark(hsl(206, 100%, 27%), hsl(206, 100%, 43%));
+      --code-bg-color: light-dark(#f0f0f0, #353135);
+    }
+    body         { font: calc(14rem/16)/1.5 "Segoe UI", sans-serif; color: var(--main-fg-color); background-color: var(--main-bg-color) }
+    a:link, a:visited { color: var(--link-fg-color); background-color: transparent; text-decoration: none }
+    a[href]:hover { color: var(--link-hover-fg-color); text-decoration: underline }
+    tt, pre      { font: calc(13rem/16)/calc(21rem/16) monospace; color: inherit; background-color: var(--code-bg-color) }
+    tt           { padding: 2px 4px; border-radius: 4px }
+    pre          { line-height: normal; padding: 10px; border-radius: 6px; overflow-x: auto }
+    li, div.limargins { margin-block: calc(5rem/16) }
+    div.bluehead { text-align: center; color: white; background-color: hsl(206, 100%, 30%); padding: 5px; font-weight: bold; line-height: normal }
+    .date        { font-size: calc(11rem/16); font-weight: bold }
+    .head1       { font-size: calc(32rem/16) }
+    .head2       { font-size: calc(20rem/16) }
+    .ver         { font-size: calc(20rem/16); font-weight: bold }
+    code.innosetup .sec { font-weight: bold }
+    code.innosetup .key { color: #0078d4 }
+    code.innosetup .com { color: #339933 }
+    code.innosetup .con { color: #9262a8 }
+</style>
+</head>
+<body>
+
+<div class="bluehead"><span class="head1">Inno Setup 6</span><br /><span class="head2">Revision History</span></div>
+
+<p>Copyright © 1997-2025 <a href="./">Jordan Russell</a>. All rights reserved.<br />
+Portions Copyright © 2000-2025 Martijn Laan. All rights reserved.<br />
+For conditions of distribution and use, see <a href="files/is/license.txt">LICENSE.TXT</a>.
+</p>
+
+<p><b>Want to be notified by e-mail of new Inno Setup releases?</b> <a href="ismail.php">Subscribe</a> to the Inno Setup Mailing List!</p>
+
+<p><a name="6.6.1"></a><span class="ver">6.6.1 </span><span class="date">(2025-11-20)</span></p>
+
+<p>Thank you to everyone who has already <a href="https://jrsoftware.org/isorder.php">purchased a commercial license</a>. Your support is very important to our ongoing development.</p>
+
+<ul>
+  <li>Changes related to custom styles:
+  <ul>
+    <li>Previously, when displaying any RTF text with a custom style active (including the built-in custom dark style), all foreground colors were replaced by the style's foreground color. This has been improved to only replace default foreground colors, preserving any custom colors.</li>
+    <li>Added new <tt>[Setup]</tt> section directive <tt>WizardImageOpacity</tt> to specify the opacity of wizard images. This is useful if you want to use identical regular and <tt>DynamicDark</tt> wizard images. For example, you can set it to <tt>150</tt> to achieve partial transparency. Defaults to fully opaque (non-transparent).</li>
+    <li>The compiler now stores identical regular and <tt>DynamicDark</tt> wizard images only once.</li>
+    <li><i>Documentation fix:</i> The prototype of Pascal Scripting support function <tt>CreateCustomForm</tt> was changed in the previous version, but <a href="https://jrsoftware.org/ishelp/index.php?topic=isxfunc_createcustomform">its documentation</a> was not updated accordingly. This has now been corrected.</li>
+  </ul>
+  </li>
+  <li>Security improvement:
+  <ul>
+    <li>Added new <tt>[Files]</tt> section flag <tt>notimestamp</tt>, preventing the file from being stored with a timestamp. Use this flag to help make builds reproducible, even if you are unable to preserve timestamps on source files.</li>
+  </ul>
+  </li>
+  <li>Other minor improvements.</li>
+</ul>
+
+<p>Using Inno Setup commercially? Please <a href="https://jrsoftware.org/isorder.php">purchase a license</a>.</p>
+
+<p><a name="6.6.0"></a><span class="ver">6.6.0 </span><span class="date">(2025-11-11)</span></p>
+
+<span class="head2">Dark mode and custom styles in Setup and Uninstall</span>
+<p>Setup and Uninstall now both support dark mode, forced or automatic. Custom styles are also supported.</p>
+<p>This new feature does <i>not</i> increase the size of Setup if not used and is fully backward compatible.</p>
+<ul>
+  <li>Enhanced <tt>[Setup]</tt> section directive <tt>WizardStyle</tt> with new appearance modes:
+  <ul>
+    <li>Added appearance modes: <tt>light</tt> (default, forced light mode, same appearance as previous versions), <tt>dark</tt> (forced dark mode, new appearance), and <tt>dynamic</tt> (automatically follows Windows system settings).</li>
+    <li>For example, to use the modern look and automatically switch between light and dark appearance based on the user's Windows system settings:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dynamic</code></pre>
+    </li>
+    <li>Dark mode automatically replaces icons, wizard images, and colors while maintaining a consistent user experience. It still allows a custom main icon, and custom images and colors. Includes support for styled task dialogs.<br/>
+        <a href="https://jrsoftware.org/images/is-welcome-dark-org-150.png">Example screenshot of Setup using the built-in dark style, at 150% DPI</a>.<br/>
+        <a href="https://jrsoftware.org/images/is-taskdialog-dark-org-125.png">Example screenshot of a task dialog using the built-in dark style, at 125% DPI</a>.<br/>
+        <a href="https://jrsoftware.org/images/is-taskdialog-dark-org-125-rtl.png">Includes full right-to-left support</a>.
+    </li>
+    <li>See the updated <a href="https://jrsoftware.org/ishelp/index.php?topic=setup_wizardstyle">WizardStyle</a> help topic for more information, special considerations, and example screenshots.</li>
+  </ul>
+  </li>
+  <li>Added four new <tt>DynamicDark</tt> directives to the <tt>[Setup]</tt> section, for specifying separate custom images and colors used specifically when dynamic mode switches to dark appearance:
+  <ul>
+    <li>For example, to specify two custom colors, one for light mode and one for dark mode:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dynamic
+<span class="key">WizardImageBackColor</span>=clWhite
+<span class="key">WizardImageBackColorDynamicDark</span>=#2b2b2b</code></pre>
+        Note: Forced dark mode (<tt>dark</tt>) does not use the <tt>DynamicDark</tt> settings; it uses the standard settings. Example:
+      <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dark
+<span class="key">WizardImageBackColor</span>=#2b2b2b</code></pre>
+    </li>
+  </ul>
+  </li>
+  <li>The default style can be customized by specifying a VCL Styles file using the new <tt>WizardStyleFile</tt> directive and a fifth <tt>DynamicDark</tt> directive:
+  <ul>
+    <li>For example, to specify two custom styles, one for light mode and one for dark mode:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dynamic
+<span class="key">WizardStyleFile</span>=MyStyleLight.vsf
+<span class="key">WizardStyleFileDynamicDark</span>=MyStyleDark.vsf</code></pre>
+        <a href="https://jrsoftware.org/images/is-welcome-polarlight-org-150.png">Example screenshot of Setup using the Polar Light style, at 150% DPI</a>.<br/>
+        <a href="https://jrsoftware.org/images/is-welcome-polardark-org-150.png">Example screenshot of Setup using the Polar Dark style, at 150% DPI</a>.<br/>
+        <a href="https://jrsoftware.org/images/is-taskdialog-zircon-org-125.png">Example screenshot of a task dialog using the Zircon style, at 125% DPI</a>.
+    </li>
+    <li>When a custom style (including the built-in custom dark style) is active, all text labels, except for the label associated with the <tt>BeveledLabel</tt> message, are transparent rather than opaque.</li>
+    <li>The Polar style shown above is available built-in and directly supported by the <tt>WizardStyle</tt> directive. For example:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dynamic polar</code></pre>
+    </li>
+    <li>Three more custom styles are available built-in and directly supported by the <tt>WizardStyle</tt> directive: <tt>slate</tt>, <tt>windows11</tt> and <tt>zircon</tt>. <tt>slate</tt> uses medium gray for both the light and dark appearances, <tt>windows11</tt> enables a light counterpart of the built-in dark style, and <tt>zircon</tt> is an alternative light-only style with cyan accents, shown above. For example:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern zircon</code></pre>
+    </li>
+    <li>Also supported is an <tt>includetitlebar</tt> modifier: Enables custom styling of both title bars and borders. By default, the system's native light or dark title bar is used instead. For example:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dynamic polar includetitlebar</code></pre>
+    </li>
+    <li>Also supported is an <tt>excludelightbuttons</tt> modifier: Disables custom styling of all buttons (including command link buttons, as used in task dialogs) when a light style is active. For example:
+        <pre><code class="innosetup"><span class="key">WizardStyle</span>=modern dynamic windows11 excludelightbuttons</code></pre>
+    </li>
+  </ul>
+  </li>
+  <li>Custom styles (including the built-in custom dark style) are <i>not</i> activated when the user's system is set to a high-contrast theme or when new command line parameter '/NOSTYLE' is used.</li>
+  <li>Compiler IDE: Added a new <i>Wizard Style</i> page to the New Script Wizard, allowing to choose a style and view example screenshots.</li>
+  <li>Pascal Scripting:
+  <ul>
+    <li>Added new support functions <tt>IsWinDark</tt> and <tt>IsDarkInstallMode</tt>.</li>
+    <li>Added new <tt>StyleElements</tt> and <tt>StyleName</tt> properties to support class <tt>TControl</tt>. See <i><a href="https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Examples/CodeClasses.iss">CodeClasses.iss</a></i> for an example, which also demonstrates the use of <tt>IsDarkInstallMode</tt>.</li>
+  </ul>
+</li>
+</ul>
+<span class="head2">Other changes to the look and feel of Setup and Uninstall</span>
+<p>The default look and feel of Setup and Uninstall has been further modernized by switching to the Segoe UI font, along with other improvements.</p>
+<ul>
+  <li>Setup now always uses high-quality, system-defined icons instead of custom ones on the <i>Select Destination Location</i> and <i>Preparing to Install</i> wizard pages, and on the <i>Setup Needs the Next Disk</i> form.</li>
+  <li><tt>[Setup]</tt> section directive <tt>WizardSizePercent</tt> now always defaults to <tt>120,120</tt>, instead of only when you are using <tt>WizardStyle=modern</tt>. As a result, if you are using <tt>WizardStyle=classic</tt>, your Setup windows will increase in size by 20% by default.</li>
+  <li><tt>[Setup]</tt> section directive <tt>WizardSizePercent</tt> is now supported by Uninstall. As a result, your uninstaller window will increase in size by 20% by default.</li>
+  <li>Setup and Uninstall now keep the original aspect ratio of their windows when scaling for DPI. As a result, your Setup and Uninstall windows will by default be 16% wider at 125% DPI or higher.<br/>
+      Can be disabled by setting new <tt>[Setup]</tt> section directive <tt>WizardKeepAspectRatio</tt> to <tt>no</tt>.
+  </li>
+  <li>Support for <tt>[Setup]</tt> section directive <tt>WizardResizable</tt> has been dropped, so the user will no longer be able to resize the main Setup wizard window.</li>
+  <li>The default regular font used by Setup and Uninstall has been changed from 8-point <i>Tahoma</i> to 9-point <i>Segoe UI</i>, for a more modern appearance.<br/>
+      To use 8-point <i>Tahoma</i> again, use:
+      <pre><code class="innosetup"><span class="sec">[LangOptions]</span>
+<span class="key">DialogFontName</span>=Tahoma
+<span class="key">DialogFontSize</span>=8
+<span class="key">DialogFontBaseScaleHeight</span>=13
+<span class="key">DialogFontBaseScaleWidth</span>=6</code></pre>
+If you were already using 9-point <i>Segoe UI</i>, you will notice a change in scaling when you update. To use your previous scaling, use:
+<pre><code class="innosetup"><span class="sec">[LangOptions]</span>
+<span class="key">DialogFontName</span>=Segoe UI
+<span class="key">DialogFontSize</span>=9
+<span class="key">DialogFontBaseScaleHeight</span>=13
+<span class="key">DialogFontBaseScaleWidth</span>=6</code></pre>
+  </li>
+  <li>The default large font used by Setup on the <i>Welcome</i> and <i>Setup Completed</i> wizard pages has been changed from 12-point <i>Verdana</i> to 14-point <i>Segoe UI</i>, for a more modern appearance.<br/>
+      To use 12-point <i>Verdana</i> again, use:
+      <pre><code class="innosetup"><span class="sec">[LangOptions]</span>
+<span class="key">WelcomeFontName</span>=Verdana
+<span class="key">WelcomeFontSize</span>=12</code></pre>
+  </li>
+  <li>Pascal Scripting:
+  <ul>
+    <li>Added support functions <tt>InitializeBitmapButtonFromStockIcon</tt> and <tt>InitializeBitmapImageFromStockIcon</tt>. Can be used to display various high-quality, system-defined icons, on all versions of Windows.<br/>
+        See <i><a href="https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Examples/CodeClasses.iss">CodeClasses.iss</a></i> for an example, and <a href="https://learn.microsoft.com/en-us/windows/win32/api/shellapi/ne-shellapi-shstockiconid#constants">Microsoft Learn</a> for an overview of all available icons.<br/>
+        <a href="https://jrsoftware.org/images/is-codeclasses-stockicons-125.png">Example screenshot of the new CodeClasses.iss example, at 125% DPI and in dark mode</a>.
+    </li>
+    <li>Wizard form sizing for <tt>WizardSizePercent</tt> is now done before event function <tt>InitializeWizard</tt> is called, instead of after, consistent with scaling for system DPI or for a custom <tt>DialogFontSize</tt>.<br/>
+         If you have custom controls that must grow with <tt>WizardSizePercent</tt>, and those controls use the <tt>Anchors</tt> property to achieve this (that is, they have both <tt>akLeft</tt> and <tt>akRight</tt> set, or both <tt>akTop</tt> and <tt>akBottom</tt> set), and they do not use <tt>SurfaceWidth</tt> or <tt>SurfaceHeight</tt>, you must either start using the new <tt>SurfaceExtraWidth</tt> and <tt>SurfaceExtraHeight</tt> properties (as demonstrated by the updated <a href="https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Examples/CodeClasses.iss">CodeClasses.iss</a> example script), or switch to using <tt>SurfaceWidth</tt> and <tt>SurfaceHeight</tt>.<br/>
+         Existing custom code that assigns the <tt>Anchors</tt> property can be removed from your scripts.
+    </li>
+    <li>The prototype of support function <tt>CreateCustomForm</tt> has changed. Support class <tt>TSetupForm</tt> has changed as well: function <tt>FlipSizeAndCenterIfNeeded</tt> has been renamed to <tt>FlipAndCenterIfNeeded</tt>, property <tt>SizeAndCenterOnShow</tt> has been renamed to <tt>CenterOnShow</tt>, and property <tt>KeepSizeX</tt> is now read-only. See <i><a href="https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Examples/CodeClasses.iss">CodeClasses.iss</a></i> for an updated <tt>CreateCustomForm</tt>/<tt>TSetupForm</tt> example.
+    </li>
+  </ul>
+  </li>
+</ul>
+<span class="head2">Security improvements</span>
+<p>Updating is recommended, even if you don't plan to use the other enhancements right away. We continually add extra checks to make your installers safer and more reliable. In this version:</p>
+<ul>
+  <li>In temporary directory/file names, the number of random base-36 digits has been doubled from 5 to 10, and the digits are now generated using a <abbr title="Cryptographically Secure Pseudorandom Number Generator">CSPRNG</abbr> function (<tt>BCryptGenRandom</tt>). This is intended to provide defense against an attack that might depend on the generated names being predictable.</li>
+  <li>Uninstall now uses a random name for its temporary directory (<tt>is-XXXXXXXXXX-uninstall.tmp</tt>), instead of attempting to re-use a fixed name whenever possible (usually <tt>iu-14D2N.tmp</tt> in previous versions). This is primarily intended to add defense-in-depth. Additionally, this change addresses a non-security issue in previous versions &mdash; extremely unlikely to be seen in practice &mdash; where if two uninstallers were started near-simultaneously, one could potentially overwrite the other's temporary file.</li>
+  <li>In previous versions, before Uninstall deleted a pre-existing temporary directory (usually named <tt>iu-14D2N.tmp</tt>), it checked for the <tt>FILE_ATTRIBUTE_REPARSE_POINT</tt> attribute to ensure it wasn't following a junction or symbolic link. However, this check had a <abbr title="Time-of-Check to Time-of-Use">TOCTOU</abbr> problem &mdash; it was theoretically possible for the directory to be changed into a junction or symbolic link between the check and the deletion. We are not aware of any way to practically exploit the race condition, and this issue is only potentially relevant when other, untrusted users have write access to the temporary directory, which is not common. (Before Inno Setup 6.5, when Setup/Uninstall ran under the <tt>SYSTEM</tt> account, the world-writable <tt>C:\Windows\Temp</tt> directory was often used, but beginning in Inno Setup 6.5, <tt>C:\Windows\SystemTemp</tt> is used instead on Windows 11 and up-to-date Windows 10 systems.)</li>
+</ul>
+<p>We are also currently working on enabling Windows' RedirectionGuard in Setup and Uninstall in a future version.</p>
+<span class="head2">Other changes</span>
+<ul>
+  <li>Compiler IDE:
+  <ul>
+    <li>Improved the contrast ratio for various syntax highlighting colors, particularly in dark mode.</li>
+    <li>Updated the default dialog font from 8-point <i>Segoe UI</i> to 9-point <i>Segoe UI</i>.</li>
+    <li>Enabled dark mode support for the menus on Windows 11 Version 25H2 (2025 Update).</li>
+  </ul>
+  </li>
+  <li><tt>[Setup]</tt> section directive <tt>WizardImageBackColor</tt> and the other three <tt>BackColor</tt> directives now accept the <tt>#rrggbb</tt> color format in addition to <tt>$bbggrr</tt>.</li>
+  <li>Setup command line parameter '/SUPPRESSMSGBOXES' can now suppress additional early fatal error messages and the final restart error message. The parameter still only has an effect when combined with '/SILENT' or '/VERYSILENT'.</li>
+  <li>Pascal Scripting:
+  <ul>
+    <li>Added support for command link buttons (the button style used in task dialogs). See <i><a href="https://raw.githubusercontent.com/jrsoftware/issrc/refs/heads/main/Examples/CodeClasses.iss">CodeClasses.iss</a></i> for an example.</li>
+    <li>Added support functions <tt>Round</tt>, <tt>Trunc</tt>, <tt>Int</tt>, and <tt>MulDiv</tt>.</li>
+    <li>Added support function <tt>StrToColor</tt>.</li>
+    <li>Undid the change made to the <tt>CurPageChanged</tt> event function in version 6.5.0.</li>
+  </ul>
+  </li>
+  <li>If Windows returns a <a href="https://learn.microsoft.com/en-us/troubleshoot/windows-server/shell-experience/temp-folder-with-logon-session-id-deleted">temporary directory that does not exist</a>, Setup and Uninstall will now recreate it, but only if they detect the specific scenario described in the linked article. Starting with version 6.5.0, Setup and Uninstall could not run in this scenario. Prior to version 6.5.0, they would select a different temporary directory, which was also undesirable.</li>
+  <li>Minor improvements and fixes.</li>
+</ul>
+
+<p><a href="files/is6.5-whatsnew.htm">Inno Setup 6.5 Revision History</a></p>
+
+</body>
+</html>

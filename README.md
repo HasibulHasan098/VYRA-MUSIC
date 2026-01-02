@@ -39,33 +39,35 @@
 - � **Auto-queue** — Automatically fetches related songs when queue ends
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 
-## 🆕 What's New in v1.0.3
+## 🆕 What's New in v1.0.4
 
-### Accent Color Customization
-- **Custom Accent Color** — Choose from 9 preset colors or pick any custom color
-- **HEX Input** — Enter exact hex codes for precise color matching
-- **App-wide Theming** — Accent color applies to buttons, toggles, equalizer, and more
+### Customizable Keyboard Shortcuts
+- **In-App Keybinds** — Customize shortcuts for play/pause, next, previous, volume, mute, like, and lyrics
+- **Global Keybinds** — Control playback even when app is minimized (toggle in settings)
+- **2-Key Combos** — Support for modifier + key combinations (e.g., Ctrl+P)
+- **Live Recording** — See keys as you press them while setting shortcuts
+- **Unbind Support** — Press Backspace/Delete to remove a keybind
 
-### Update Notifications
-- **Release Notes Popup** — View release notes before updating
-- **TitleBar Update Button** — Quick access to updates with notes icon
-- **One-Click Updates** — Download and install updates directly from the app
+### Security & Privacy
+- **Blocked Browser Shortcuts** — All default browser shortcuts (Ctrl+P, Ctrl+S, F12, etc.) are blocked
+- **Only User Keybinds Work** — Only shortcuts you set in settings will function
+- **No Dev Tools** — Developer tools access is disabled
 
-### Lyrics Panel Improvements
-- **Light Mode Support** — Lyrics panel now has proper light mode with white gradient
-- **Enhanced Glow Effect** — More aggressive glow on current lyrics line
-- **Better Contrast** — Improved text visibility in both dark and light modes
+### Custom Installer
+- **Inno Setup Installer** — Professional Windows installer built with Inno Setup
+- **Custom Branding** — Installer features VYRA icon and branding
+- **One-Click Install** — Simple installation without license prompts
 
 ### Bug Fixes
-- **Equalizer Colors** — EQ graph now uses accent color instead of hardcoded blue
-- **Slider Styling** — All sliders now respect accent color setting
+- **Keybind Recording** — Fixed key combination recording not working properly
+- **Release Key Detection** — Combos now save when you release the main key (not all keys)
 
 ## 🚀 Installation
 
 ### Windows
 
 1. Download the latest installer from [Releases](https://github.com/HasibulHasan098/VYRA-MUSIC/releases)
-2. Run `VYRA_1.0.3_x64-setup.exe`
+2. Run `VYRA_1.0.4_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -95,6 +97,7 @@ npm run tauri:build
 | [Tailwind CSS](https://tailwindcss.com/) | Styling |
 | [Zustand](https://zustand-demo.pmnd.rs/) | State management |
 | [Rust](https://www.rust-lang.org/) | Backend & audio proxy |
+| [Inno Setup](https://jrsoftware.org/isinfo.php) | Windows installer |
 
 ## 📁 Project Structure
 

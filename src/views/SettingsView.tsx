@@ -18,6 +18,7 @@ import {
   MessageCircle,
   Repeat,
   SlidersHorizontal,
+  Keyboard,
 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { isUpdateAvailable, getCurrentVersion, downloadAndInstallUpdate, openReleasesPage, ReleaseInfo } from '../api/updater'
@@ -56,6 +57,14 @@ export default function SettingsView() {
     resetEqualizer,
     accentColor,
     setAccentColor,
+    globalKeybindsEnabled,
+    toggleGlobalKeybinds,
+    inAppKeybinds,
+    globalKeybinds,
+    setInAppKeybind,
+    setGlobalKeybind,
+    resetInAppKeybinds,
+    resetGlobalKeybinds,
   } = useAppStore()
   const [showQualityDropdown, setShowQualityDropdown] = useState(false)
   const [showPresetDropdown, setShowPresetDropdown] = useState(false)
@@ -67,6 +76,9 @@ export default function SettingsView() {
   const [downloadingUpdate, setDownloadingUpdate] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
+  const [editingKeybind, setEditingKeybind] = useState<string | null>(null)
+  const [keybindTab, setKeybindTab] = useState<'inapp' | 'global'>('inapp')
+  const [currentKeys, setCurrentKeys] = useState<string>('')
 
   // Check for updates on mount
   useEffect(() => {
@@ -143,6 +155,117 @@ export default function SettingsView() {
   useEffect(() => {
     setHexInput(accentColor.toUpperCase())
   }, [accentColor])
+
+  // Global keydown/keyup listener for keybind recording
+  useEffect(() => {
+    if (!editingKeybind) {
+      setCurrentKeys('')
+      return
+    }
+
+    const pressedKeys = new Set<string>()
+
+    const buildKeyString = (e: KeyboardEvent) => {
+      const parts: string[] = []
+      
+      // Only allow ONE modifier (priority: Ctrl > Alt > Shift > Meta)
+      if (e.ctrlKey || pressedKeys.has('Control')) {
+        parts.push('Ctrl')
+      } else if (e.altKey || pressedKeys.has('Alt')) {
+        parts.push('Alt')
+      } else if (e.shiftKey || pressedKeys.has('Shift')) {
+        parts.push('Shift')
+      } else if (e.metaKey || pressedKeys.has('Meta')) {
+        parts.push('Meta')
+      }
+
+      // Add only ONE non-modifier key
+      for (const key of pressedKeys) {
+        if (!['Control', 'Alt', 'Shift', 'Meta'].includes(key)) {
+          const keyName =
+            key === ' ' ? 'Space' :
+            key === 'ArrowUp' ? 'Up' :
+            key === 'ArrowDown' ? 'Down' :
+            key === 'ArrowLeft' ? 'Left' :
+            key === 'ArrowRight' ? 'Right' :
+            key.length === 1 ? key.toUpperCase() : key
+          parts.push(keyName)
+          break // Only one non-modifier key allowed
+        }
+      }
+      return parts.join('+')
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      if (e.key === 'Escape') {
+        setEditingKeybind(null)
+        setCurrentKeys('')
+        return
+      }
+
+      // Count current non-modifier keys
+      const nonModifierKeys = Array.from(pressedKeys).filter(
+        k => !['Control', 'Alt', 'Shift', 'Meta'].includes(k)
+      )
+      
+      // Only add if we don't already have a non-modifier key (limit to 2 keys total: 1 modifier + 1 key)
+      const isModifier = ['Control', 'Alt', 'Shift', 'Meta'].includes(e.key)
+      if (isModifier || nonModifierKeys.length === 0) {
+        pressedKeys.add(e.key)
+      }
+      
+      setCurrentKeys(buildKeyString(e))
+    }
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+
+      const releasedKey = e.key
+      const isModifier = ['Control', 'Alt', 'Shift', 'Meta'].includes(releasedKey)
+
+      // If a non-modifier key was released, save the combo
+      if (!isModifier && pressedKeys.has(releasedKey)) {
+        const finalKeys = buildKeyString(e)
+        
+        const isGlobal = editingKeybind.startsWith('global-')
+        const action = editingKeybind.replace('inapp-', '').replace('global-', '')
+
+        // Check for unbind keys
+        if (releasedKey === 'Backspace' || releasedKey === 'Delete') {
+          if (isGlobal) {
+            setGlobalKeybind(action, '')
+          } else {
+            setInAppKeybind(action, '')
+          }
+        } else if (finalKeys) {
+          if (isGlobal) {
+            setGlobalKeybind(action, finalKeys)
+          } else {
+            setInAppKeybind(action, finalKeys)
+          }
+        }
+        
+        pressedKeys.clear()
+        setEditingKeybind(null)
+        setCurrentKeys('')
+      } else {
+        // Just a modifier released, update display
+        pressedKeys.delete(releasedKey)
+        setCurrentKeys(buildKeyString(e))
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    window.addEventListener('keyup', handleKeyUp, true)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, true)
+      window.removeEventListener('keyup', handleKeyUp, true)
+    }
+  }, [editingKeybind, setInAppKeybind, setGlobalKeybind])
 
   const handleSelectFolder = async () => {
     try {
@@ -438,6 +561,26 @@ export default function SettingsView() {
       ]
     },
     {
+      title: 'Keyboard Shortcuts',
+      items: [
+        {
+          icon: Keyboard,
+          label: 'Global Shortcuts',
+          description: globalKeybindsEnabled ? 'Work even when app is minimized' : 'Only work when app is focused',
+          action: (
+            <button
+              onClick={toggleGlobalKeybinds}
+              className={`relative w-[51px] h-[31px] rounded-full ios-transition
+                ${globalKeybindsEnabled ? 'bg-ios-blue' : 'bg-gray-300'}`}
+            >
+              <div className={`absolute top-[2px] w-[27px] h-[27px] bg-white rounded-full shadow-md ios-transition
+                ${globalKeybindsEnabled ? 'left-[22px]' : 'left-[2px]'}`} />
+            </button>
+          )
+        }
+      ]
+    },
+    {
       title: 'Account',
       items: [
         {
@@ -701,6 +844,161 @@ export default function SettingsView() {
                   Reset
                 </button>
               </div>
+            </div>
+          )}
+
+          {/* Keybind Controls - Show after Keyboard Shortcuts section */}
+          {group.title === 'Keyboard Shortcuts' && (
+            <div className={`rounded-xl mt-3 overflow-hidden ${darkMode ? 'bg-ios-card-dark' : 'bg-ios-card'}`}>
+              {/* Tabs */}
+              <div className={`flex border-b ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+                <button
+                  onClick={() => setKeybindTab('inapp')}
+                  className={`flex-1 py-3 text-sm font-medium ios-transition
+                    ${keybindTab === 'inapp' 
+                      ? 'text-ios-blue border-b-2 border-ios-blue' 
+                      : darkMode ? 'text-ios-gray' : 'text-ios-gray'}`}
+                >
+                  In-App
+                </button>
+                <button
+                  onClick={() => setKeybindTab('global')}
+                  disabled={!globalKeybindsEnabled}
+                  className={`flex-1 py-3 text-sm font-medium ios-transition
+                    ${!globalKeybindsEnabled 
+                      ? 'text-ios-gray/50 cursor-not-allowed' 
+                      : keybindTab === 'global' 
+                        ? 'text-ios-blue border-b-2 border-ios-blue' 
+                        : darkMode ? 'text-ios-gray' : 'text-ios-gray'}`}
+                >
+                  Global {!globalKeybindsEnabled && '(Disabled)'}
+                </button>
+              </div>
+
+              {/* In-App Keybinds */}
+              {keybindTab === 'inapp' && (
+                <>
+                  {Object.entries(inAppKeybinds).map(([action, key], index) => {
+                    const labels: Record<string, string> = {
+                      playPause: 'Play / Pause',
+                      next: 'Next Track',
+                      previous: 'Previous Track',
+                      volumeUp: 'Volume Up',
+                      volumeDown: 'Volume Down',
+                      mute: 'Mute',
+                      like: 'Like Song',
+                      lyrics: 'Toggle Lyrics',
+                    }
+                    const isEditing = editingKeybind === `inapp-${action}`
+                    
+                    return (
+                      <div
+                        key={action}
+                        className={`flex items-center justify-between px-4 py-3
+                          ${index > 0 ? `border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}` : ''}`}
+                      >
+                        <span className={`text-sm ${darkMode ? 'text-white' : 'text-black'}`}>
+                          {labels[action] || action}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditingKeybind(isEditing ? null : `inapp-${action}`)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-mono min-w-[80px] text-center ios-active
+                              ${isEditing 
+                                ? 'bg-ios-blue text-white animate-pulse' 
+                                : key 
+                                  ? darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'
+                                  : 'bg-ios-gray/20 text-ios-gray'}`}
+                          >
+                            {isEditing ? (currentKeys || 'Press key...') : key || 'None'}
+                          </button>
+                          {key && (
+                            <button
+                              onClick={() => setInAppKeybind(action, '')}
+                              className="p-1 text-ios-gray hover:text-ios-red ios-active"
+                              title="Unbind"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div className={`flex justify-end px-4 py-3 border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+                    <button
+                      onClick={resetInAppKeybinds}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium ios-active
+                        ${darkMode ? 'bg-ios-card-secondary-dark text-white hover:bg-white/20' : 'bg-ios-card-secondary text-black hover:bg-black/10'}`}
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Global Keybinds */}
+              {keybindTab === 'global' && globalKeybindsEnabled && (
+                <>
+                  <div className={`px-4 py-2 text-xs text-ios-gray ${darkMode ? 'bg-ios-card-secondary-dark/50' : 'bg-ios-card-secondary/50'}`}>
+                    Use modifier + key (e.g., Ctrl+P) to avoid conflicts with other apps
+                  </div>
+                  {Object.entries(globalKeybinds).map(([action, key], index) => {
+                    const labels: Record<string, string> = {
+                      playPause: 'Play / Pause',
+                      next: 'Next Track',
+                      previous: 'Previous Track',
+                      volumeUp: 'Volume Up',
+                      volumeDown: 'Volume Down',
+                      mute: 'Mute',
+                    }
+                    const isEditing = editingKeybind === `global-${action}`
+                    
+                    return (
+                      <div
+                        key={action}
+                        className={`flex items-center justify-between px-4 py-3
+                          ${index > 0 ? `border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}` : 'border-t'} ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}
+                      >
+                        <span className={`text-sm ${darkMode ? 'text-white' : 'text-black'}`}>
+                          {labels[action] || action}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setEditingKeybind(isEditing ? null : `global-${action}`)}
+                            className={`px-3 py-1.5 rounded-lg text-sm font-mono min-w-[120px] text-center ios-active
+                              ${isEditing 
+                                ? 'bg-ios-blue text-white animate-pulse' 
+                                : key 
+                                  ? darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'
+                                  : 'bg-ios-gray/20 text-ios-gray'}`}
+                          >
+                            {isEditing ? (currentKeys || 'Press combo...') : key || 'None'}
+                          </button>
+                          {key && (
+                            <button
+                              onClick={() => setGlobalKeybind(action, '')}
+                              className="p-1 text-ios-gray hover:text-ios-red ios-active"
+                              title="Unbind"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  <div className={`flex justify-end px-4 py-3 border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+                    <button
+                      onClick={resetGlobalKeybinds}
+                      className={`px-4 py-1.5 rounded-lg text-sm font-medium ios-active
+                        ${darkMode ? 'bg-ios-card-secondary-dark text-white hover:bg-white/20' : 'bg-ios-card-secondary text-black hover:bg-black/10'}`}
+                    >
+                      Reset to Default
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           )}
         </section>
