@@ -19,8 +19,6 @@ AppUpdatesURL={#MyAppURL}/releases
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
-; Remove license page - auto accept
-; LicenseFile=..\LICENSE
 DisableDirPage=no
 DisableProgramGroupPage=yes
 OutputDir=output
@@ -30,11 +28,8 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-
-; Custom appearance - disabled for now
-; WizardImageFile=wizard-image.bmp
-; WizardSmallImageFile=wizard-small.bmp
-; WizardImageStretch=yes
+ArchitecturesInstallIn64BitMode=x64compatible
+ArchitecturesAllowed=x64compatible
 
 ; Modern look
 WindowVisible=yes
@@ -45,24 +40,37 @@ WindowResizable=no
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked; OnlyBelowVersion: 6.1; Check: not IsAdminInstallMode
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-; Main executable and resources from Tauri build
+; Main executable from Tauri build
 Source: "..\src-tauri\target\release\vyra.exe"; DestDir: "{app}"; DestName: "VYRA.exe"; Flags: ignoreversion
-Source: "..\src-tauri\target\release\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
+; Resources folder
+Source: "..\src-tauri\target\release\resources\*"; DestDir: "{app}\resources"; Flags: ignoreversion recursesubdirs createallsubdirs skipifsourcedoesntexist
+; WebView2 bootstrapper (download from Microsoft)
+Source: "MicrosoftEdgeWebview2Setup.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall skipifsourcedoesntexist
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
-Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: quicklaunchicon
 
 [Run]
+; Install WebView2 if not present
+Filename: "{tmp}\MicrosoftEdgeWebview2Setup.exe"; Parameters: "/silent /install"; StatusMsg: "Installing WebView2 Runtime..."; Flags: waituntilterminated skipifdoesntexist
+; Launch app after install
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
+function IsWebView2Installed(): Boolean;
+var
+  Version: String;
+begin
+  Result := RegQueryStringValue(HKLM, 'SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) or
+            RegQueryStringValue(HKCU, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version) or
+            RegQueryStringValue(HKLM, 'SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}', 'pv', Version);
+end;
+
 function FindAndUninstallTauri(): Boolean;
 var
   UninstallKey: String;
@@ -70,22 +78,17 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  
-  // Tauri NSIS uses the app name directly as registry key
   UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\VYRA';
   
-  // Check HKCU first (current user install)
   if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
   begin
     if UninstallString <> '' then
     begin
-      // Remove quotes if present
       if Copy(UninstallString, 1, 1) = '"' then
         UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
       Exec(UninstallString, '/SILENT', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     end;
   end
-  // Check HKLM (all users install)
   else if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', UninstallString) then
   begin
     if UninstallString <> '' then
@@ -104,8 +107,6 @@ var
   ResultCode: Integer;
 begin
   Result := True;
-  
-  // Inno Setup uses AppId + _is1
   UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}_is1';
   
   if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
@@ -131,8 +132,23 @@ end;
 function InitializeSetup(): Boolean;
 begin
   Result := True;
-  // Uninstall old Tauri/NSIS version
   FindAndUninstallTauri();
-  // Uninstall old Inno Setup version
   FindAndUninstallInno();
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Check if WebView2 needs to be installed
+    if not IsWebView2Installed() then
+    begin
+      if FileExists(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe')) then
+      begin
+        Exec(ExpandConstant('{tmp}\MicrosoftEdgeWebview2Setup.exe'), '/silent /install', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+      end;
+    end;
+  end;
 end;
