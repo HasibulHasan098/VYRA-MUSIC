@@ -39,38 +39,33 @@
 - � **Auto-queue** — Automatically fetches related songs when queue ends
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 
-## 🆕 What's New in v1.0.2
+## 🆕 What's New in v1.0.3
 
-### Improved Queue System
-- **Infinite Queue** — Queue now automatically extends with 50 related songs when running low
-- **Smart Queue Extension** — Fetches new songs when fewer than 6 tracks remain
-- **No More Empty Queue** — Even rapid clicking through songs keeps the queue full
+### Accent Color Customization
+- **Custom Accent Color** — Choose from 9 preset colors or pick any custom color
+- **HEX Input** — Enter exact hex codes for precise color matching
+- **App-wide Theming** — Accent color applies to buttons, toggles, equalizer, and more
 
-### Settings Reorganization
-- **Organized Settings** — Settings page reorganized into logical sections: Appearance, Playback, Storage, Behavior, Account, About
-- **Equalizer in Playback** — EQ settings moved under Playback section for better organization
+### Update Notifications
+- **Release Notes Popup** — View release notes before updating
+- **TitleBar Update Button** — Quick access to updates with notes icon
+- **One-Click Updates** — Download and install updates directly from the app
 
-### Equalizer Presets
-- **20 EQ Presets** — Added all Spotify-style presets: Flat, Acoustic, Bass Booster, Classical, Dance, Deep, Electronic, Hip-Hop, Jazz, Latin, Loudness, Lounge, Piano, Pop, R&B, Rock, Small Speakers, Spoken Word, Treble Booster, and more
+### Lyrics Panel Improvements
+- **Light Mode Support** — Lyrics panel now has proper light mode with white gradient
+- **Enhanced Glow Effect** — More aggressive glow on current lyrics line
+- **Better Contrast** — Improved text visibility in both dark and light modes
 
-### Enhanced Home Page
-- **More Content** — Home page now fetches from multiple YouTube Music endpoints
-- **Genre Sections** — Added genre-based sections like Pop Hits, Chill Vibes, Workout, etc.
-- **No Videos** — Filtered out video sections to show only music content
-
-### Thumbnail Quality Fix
-- **High Quality Thumbnails** — Fixed black borders on YouTube thumbnails
-- **Proper Cropping** — Thumbnails now properly cropped without quality loss
-
-### Autoplay Control
-- **Autoplay Toggle** — Autoplay setting now properly stops playback when disabled
+### Bug Fixes
+- **Equalizer Colors** — EQ graph now uses accent color instead of hardcoded blue
+- **Slider Styling** — All sliders now respect accent color setting
 
 ## 🚀 Installation
 
 ### Windows
 
 1. Download the latest installer from [Releases](https://github.com/HasibulHasan098/VYRA-MUSIC/releases)
-2. Run `VYRA_1.0.2_x64-setup.exe`
+2. Run `VYRA_1.0.3_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source

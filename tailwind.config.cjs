@@ -47,7 +47,7 @@ module.exports = {
           'card-dark': '#1C1C1E',
           'card-secondary': '#F2F2F7',
           'card-secondary-dark': '#2C2C2E',
-          blue: '#007AFF',
+          blue: 'var(--accent-color)',
           green: '#34C759',
           red: '#FF3B30',
           orange: '#FF9500',
@@ -62,6 +62,7 @@ module.exports = {
           'gray-6': '#F2F2F7',
           separator: 'rgba(60, 60, 67, 0.36)',
           'separator-dark': 'rgba(84, 84, 88, 0.65)',
+          accent: 'var(--accent-color)',
         }
       },
       // iOS-style backdrop blur

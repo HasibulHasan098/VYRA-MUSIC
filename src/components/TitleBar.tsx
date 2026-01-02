@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Search, Settings, X, Minus, Square, Download } from 'lucide-react'
+import { Search, Settings, X, Minus, Square, Download, FileText, ArrowDownCircle, Loader2 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore } from '../store/playerStore'
-import { isUpdateAvailable, ReleaseInfo } from '../api/updater'
+import { isUpdateAvailable, ReleaseInfo, downloadAndInstallUpdate, openReleasesPage } from '../api/updater'
 import Tooltip from './Tooltip'
 
 // Tauri window controls
@@ -45,6 +45,8 @@ export default function TitleBar() {
   const [localQuery, setLocalQuery] = useState(searchQuery)
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<ReleaseInfo | null>(null)
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false)
+  const [downloadingUpdate, setDownloadingUpdate] = useState(false)
 
   // Check for updates on mount
   useEffect(() => {
@@ -61,6 +63,20 @@ export default function TitleBar() {
     }
     checkUpdate()
   }, [])
+
+  const handleDownloadUpdate = async () => {
+    if (!updateInfo?.downloadUrl) {
+      openReleasesPage()
+      return
+    }
+    setDownloadingUpdate(true)
+    try {
+      await downloadAndInstallUpdate(updateInfo.downloadUrl)
+    } catch {
+      // Error handled silently
+    }
+    setDownloadingUpdate(false)
+  }
 
   // Auto-search as user types (debounced)
   useEffect(() => {
@@ -91,17 +107,26 @@ export default function TitleBar() {
         ${darkMode ? 'bg-ios-card-dark border-ios-separator-dark' : 'bg-ios-card border-ios-separator'}`}
     >
       {/* Left side - Update button or empty spacer */}
-      <div data-tauri-drag-region className="w-32 flex-shrink-0 h-full flex items-center">
+      <div data-tauri-drag-region className="w-40 flex-shrink-0 h-full flex items-center gap-fib-5">
         {updateAvailable && updateInfo && (
-          <Tooltip text={`Update to v${updateInfo.version}`} position="bottom">
+          <>
+            <Tooltip text={`v${updateInfo.version} Release Notes`} position="bottom">
+              <button
+                onClick={() => setShowReleaseNotes(true)}
+                className={`p-fib-8 rounded-fib-8 ios-active ios-transition hover:bg-ios-gray/20
+                  ${darkMode ? 'text-white' : 'text-black'}`}
+              >
+                <FileText size={16} />
+              </button>
+            </Tooltip>
             <button
-              onClick={() => { closeLyrics(); setView('settings') }}
+              onClick={() => setShowReleaseNotes(true)}
               className="flex items-center gap-fib-5 px-fib-8 py-fib-5 rounded-fib-8 bg-ios-blue text-white text-fib-13 font-medium ios-active hover:bg-ios-blue/90 ios-transition"
             >
               <Download size={14} />
               <span>Update</span>
             </button>
-          </Tooltip>
+          </>
         )}
       </div>
 
@@ -127,7 +152,7 @@ export default function TitleBar() {
       </div>
 
       {/* Right side - Settings + Window controls */}
-      <div className="w-32 flex-shrink-0 flex items-center justify-end gap-fib-8">
+      <div className="w-40 flex-shrink-0 flex items-center justify-end gap-fib-8">
         {/* Settings button */}
         <Tooltip text="Settings" position="bottom">
           <button
@@ -168,6 +193,91 @@ export default function TitleBar() {
           </button>
         </Tooltip>
       </div>
+
+      {/* Release Notes Modal */}
+      {showReleaseNotes && updateInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <div>
+                <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                  What's New in v{updateInfo.version}
+                </h2>
+                <p className="text-xs text-ios-gray mt-0.5">
+                  {updateInfo.publishedAt ? new Date(updateInfo.publishedAt).toLocaleDateString() : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowReleaseNotes(false)}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-black'} />
+              </button>
+            </div>
+            
+            {/* Release Notes Content */}
+            <div className={`px-5 py-4 max-h-[300px] overflow-y-auto text-sm leading-relaxed
+              ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {updateInfo.body ? (
+                <div className="whitespace-pre-wrap">
+                  {updateInfo.body.split('\n').map((line, i) => {
+                    if (line.startsWith('## ')) {
+                      return <h3 key={i} className={`font-semibold mt-3 mb-2 ${darkMode ? 'text-white' : 'text-black'}`}>{line.replace('## ', '')}</h3>
+                    }
+                    if (line.startsWith('### ')) {
+                      return <h4 key={i} className={`font-medium mt-2 mb-1 ${darkMode ? 'text-white' : 'text-black'}`}>{line.replace('### ', '')}</h4>
+                    }
+                    if (line.startsWith('- ') || line.startsWith('* ')) {
+                      return <p key={i} className="ml-2 mb-1">• {line.slice(2)}</p>
+                    }
+                    if (!line.trim()) {
+                      return <br key={i} />
+                    }
+                    return <p key={i} className="mb-1">{line}</p>
+                  })}
+                </div>
+              ) : (
+                <p className="text-ios-gray">No release notes available.</p>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <button
+                onClick={() => setShowReleaseNotes(false)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+              >
+                Later
+              </button>
+              <button
+                onClick={() => {
+                  setShowReleaseNotes(false)
+                  handleDownloadUpdate()
+                }}
+                disabled={downloadingUpdate}
+                className="flex-1 py-2.5 bg-ios-blue text-white rounded-xl text-sm font-medium ios-active flex items-center justify-center gap-2"
+              >
+                {downloadingUpdate ? (
+                  <>
+                    <Loader2 size={16} className="animate-spin" />
+                    Downloading...
+                  </>
+                ) : (
+                  <>
+                    <ArrowDownCircle size={16} />
+                    Update Now
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

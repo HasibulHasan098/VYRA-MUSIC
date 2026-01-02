@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Accent color CSS variable */
+:root {
+  --accent-color: #007AFF;
+}
+
 /* iOS-style base styles */
 * {
   -webkit-font-smoothing: antialiased;
@@ -90,7 +95,7 @@ input[type="range"]::-webkit-slider-runnable-track {
 }
 
 .slider-light::-webkit-slider-thumb {
-  background: #007AFF;
+  background: var(--accent-color);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
@@ -145,7 +150,7 @@ input[type="range"][style*="vertical-lr"]::-webkit-slider-thumb {
   width: 16px;
   height: 16px;
   background: white;
-  border: 2px solid #007AFF;
+  border: 2px solid var(--accent-color);
   border-radius: 50%;
   cursor: pointer;
   margin-left: -6px;
@@ -163,7 +168,7 @@ input[type="range"][style*="vertical-lr"]::-moz-range-thumb {
   width: 16px;
   height: 16px;
   background: white;
-  border: 2px solid #007AFF;
+  border: 2px solid var(--accent-color);
   border-radius: 50%;
   cursor: pointer;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);

@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback, useMemo } from 'react'
 import { Loader2, Music2 } from 'lucide-react'
 import { usePlayerStore } from '../store/playerStore'
+import { useAppStore } from '../store/appStore'
 import { fetchLyrics, LyricsResult } from '../api/lyrics'
 
 // Extract dominant color from image
@@ -43,6 +44,7 @@ const extractColor = (img: HTMLImageElement): { r: number; g: number; b: number 
 
 export default function LyricsPanel() {
   const { currentTrack, duration, audioElement } = usePlayerStore()
+  const { darkMode } = useAppStore()
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -231,12 +233,29 @@ export default function LyricsPanel() {
     ? `rgb(${Math.max(100, r - 30)}, ${Math.max(100, g - 30)}, ${Math.max(120, b - 20)})` // Darken for light themes
     : `rgb(${Math.min(255, r + 80)}, ${Math.min(255, g + 80)}, ${Math.min(255, b + 80)})` // Brighten for dark themes
 
-  const backgroundStyle = {
+  // Different backgrounds for dark/light mode
+  const backgroundStyle = darkMode ? {
     background: `linear-gradient(180deg, 
       rgba(${Math.floor(r * 0.6)}, ${Math.floor(g * 0.6)}, ${Math.floor(b * 0.6)}, 0.5) 0%, 
       rgba(${Math.floor(r * 0.15)}, ${Math.floor(g * 0.15)}, ${Math.floor(b * 0.15)}, 0.95) 40%,
       rgb(12, 12, 18) 100%)`,
+  } : {
+    background: `linear-gradient(180deg, 
+      rgba(${Math.min(255, r + 100)}, ${Math.min(255, g + 100)}, ${Math.min(255, b + 100)}, 0.6) 0%, 
+      rgba(${Math.min(255, r + 150)}, ${Math.min(255, g + 150)}, ${Math.min(255, b + 150)}, 0.4) 40%,
+      rgb(245, 245, 250) 100%)`,
   }
+
+  // Text colors for light/dark mode
+  const textColorPast = darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.25)'
+  const textColorUpcoming = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)'
+  const textColorRevealed = darkMode ? accentColorBright : `rgb(${Math.max(0, r - 40)}, ${Math.max(0, g - 40)}, ${Math.max(0, b - 40)})`
+  const textColorUnrevealed = darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.25)'
+  
+  // More aggressive glow
+  const glowStyle = darkMode 
+    ? `0 0 30px ${accentColor}, 0 0 60px ${accentColor}, 0 0 90px ${accentColor}` 
+    : `0 0 25px ${accentColor}, 0 0 50px ${accentColor}, 0 0 80px rgba(${r}, ${g}, ${b}, 0.6)`
 
   // Render animated text with karaoke-style fill
   const renderAnimatedText = useCallback((text: string, isCurrentLine: boolean, prog: number) => {
@@ -256,8 +275,8 @@ export default function LyricsPanel() {
             <span
               key={i}
               style={{
-                color: isRevealed ? accentColorBright : 'rgba(255, 255, 255, 0.3)',
-                textShadow: isRevealed ? `0 0 20px ${accentColor}, 0 0 40px ${accentColor}` : 'none',
+                color: isRevealed ? textColorRevealed : textColorUnrevealed,
+                textShadow: isRevealed ? glowStyle : 'none',
               }}
             >
               {char}
@@ -266,7 +285,7 @@ export default function LyricsPanel() {
         })}
       </>
     )
-  }, [accentColor, accentColorBright])
+  }, [textColorRevealed, textColorUnrevealed, glowStyle])
 
   if (loading) {
     return (
@@ -321,7 +340,7 @@ export default function LyricsPanel() {
                 className="py-2 cursor-pointer font-bold leading-snug"
                 style={{
                   fontSize: isCurrentLine ? '2rem' : '1.5rem',
-                  color: isPastLine ? 'rgba(255,255,255,0.2)' : isCurrentLine ? undefined : 'rgba(255,255,255,0.35)',
+                  color: isPastLine ? textColorPast : isCurrentLine ? undefined : textColorUpcoming,
                   transform: isCurrentLine ? 'scale(1.02)' : 'scale(1)',
                   transformOrigin: 'left center',
                   transition: 'transform 0.3s ease, font-size 0.3s ease',
@@ -339,7 +358,7 @@ export default function LyricsPanel() {
 
   return (
     <div className="flex-1 overflow-y-auto px-8 py-8" style={backgroundStyle}>
-      <div className="whitespace-pre-wrap text-xl leading-loose font-medium text-white/80">
+      <div className={`whitespace-pre-wrap text-xl leading-loose font-medium ${darkMode ? 'text-white/80' : 'text-black/70'}`}>
         {lyrics.plainLyrics}
       </div>
     </div>

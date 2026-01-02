@@ -1,6 +1,21 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from './store/appStore'
 import { usePlayerStore } from './store/playerStore'
+
+// Apply saved accent color on app load
+const initAccentColor = () => {
+  const stored = localStorage.getItem('metrolist-settings')
+  if (stored) {
+    try {
+      const parsed = JSON.parse(stored)
+      const color = parsed.state?.accentColor || '#007AFF'
+      document.documentElement.style.setProperty('--accent-color', color)
+    } catch {
+      document.documentElement.style.setProperty('--accent-color', '#007AFF')
+    }
+  }
+}
+initAccentColor()
 import Sidebar from './components/Sidebar'
 import TitleBar from './components/TitleBar'
 import Player from './components/Player'

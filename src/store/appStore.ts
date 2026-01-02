@@ -63,6 +63,8 @@ interface AppState {
   equalizerEnabled: boolean
   equalizerPreset: string
   equalizerBands: number[]
+  // Accent color
+  accentColor: string
   // User playlists
   userPlaylists: UserPlaylist[]
   selectedUserPlaylist: UserPlaylist | null
@@ -97,6 +99,8 @@ interface AppState {
   setEqualizerPreset: (preset: string) => void
   setEqualizerBand: (index: number, value: number) => void
   resetEqualizer: () => void
+  // Accent color
+  setAccentColor: (color: string) => void
   // Caching functions
   toggleCacheEnabled: () => void
   addToCache: (track: Song) => void
@@ -151,6 +155,8 @@ export const useAppStore = create<AppState>()(
       equalizerEnabled: false,
       equalizerPreset: 'flat',
       equalizerBands: [0, 0, 0, 0, 0, 0], // 60Hz, 150Hz, 400Hz, 1kHz, 2.4kHz, 15kHz
+      // Accent color
+      accentColor: '#007AFF', // iOS blue default
       // User playlists
       userPlaylists: [],
       selectedUserPlaylist: null,
@@ -541,6 +547,13 @@ export const useAppStore = create<AppState>()(
         })
       },
 
+      // Accent color
+      setAccentColor: (color) => {
+        set({ accentColor: color })
+        // Update CSS variable
+        document.documentElement.style.setProperty('--accent-color', color)
+      },
+
       // Playlist functions
       createPlaylist: (name) => {
         const id = `playlist-${Date.now()}`
@@ -633,6 +646,7 @@ export const useAppStore = create<AppState>()(
         equalizerEnabled: state.equalizerEnabled,
         equalizerPreset: state.equalizerPreset,
         equalizerBands: state.equalizerBands,
+        accentColor: state.accentColor,
         userPlaylists: state.userPlaylists
       })
     }

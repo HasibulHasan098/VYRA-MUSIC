@@ -54,14 +54,19 @@ export default function SettingsView() {
     equalizerBands,
     setEqualizerBand,
     resetEqualizer,
+    accentColor,
+    setAccentColor,
   } = useAppStore()
   const [showQualityDropdown, setShowQualityDropdown] = useState(false)
   const [showPresetDropdown, setShowPresetDropdown] = useState(false)
+  const [showAccentPicker, setShowAccentPicker] = useState(false)
+  const [hexInput, setHexInput] = useState(accentColor)
   const [checkingUpdate, setCheckingUpdate] = useState(false)
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<ReleaseInfo | null>(null)
   const [downloadingUpdate, setDownloadingUpdate] = useState(false)
   const [updateError, setUpdateError] = useState<string | null>(null)
+  const [showReleaseNotes, setShowReleaseNotes] = useState(false)
 
   // Check for updates on mount
   useEffect(() => {
@@ -109,6 +114,35 @@ export default function SettingsView() {
 
   const currentQuality =
     qualityOptions.find((q) => q.value === downloadQuality) || qualityOptions[1]
+
+  // Accent color presets
+  const accentPresets = [
+    { name: 'Blue', color: '#007AFF' },
+    { name: 'Purple', color: '#AF52DE' },
+    { name: 'Pink', color: '#FF2D55' },
+    { name: 'Red', color: '#FF3B30' },
+    { name: 'Orange', color: '#FF9500' },
+    { name: 'Yellow', color: '#FFCC00' },
+    { name: 'Green', color: '#34C759' },
+    { name: 'Teal', color: '#5AC8FA' },
+    { name: 'Indigo', color: '#5856D6' },
+  ]
+
+  // Validate and apply hex color
+  const handleHexChange = (value: string) => {
+    setHexInput(value)
+    // Auto-add # if missing
+    const hex = value.startsWith('#') ? value : `#${value}`
+    // Validate hex format
+    if (/^#[0-9A-Fa-f]{6}$/.test(hex)) {
+      setAccentColor(hex.toUpperCase())
+    }
+  }
+
+  // Sync hex input when accent color changes from presets
+  useEffect(() => {
+    setHexInput(accentColor.toUpperCase())
+  }, [accentColor])
 
   const handleSelectFolder = async () => {
     try {
@@ -168,6 +202,75 @@ export default function SettingsView() {
               <div className={`absolute top-[2px] w-[27px] h-[27px] bg-white rounded-full shadow-md ios-transition
                 ${darkMode ? 'left-[22px]' : 'left-[2px]'}`} />
             </button>
+          )
+        },
+        {
+          icon: Sun,
+          label: 'Accent Color',
+          description: accentColor.toUpperCase(),
+          action: (
+            <div className="relative">
+              <button 
+                onClick={() => setShowAccentPicker(!showAccentPicker)}
+                className="flex items-center gap-2"
+              >
+                <div 
+                  className="w-8 h-8 rounded-full border-2 border-white/20 shadow-md"
+                  style={{ backgroundColor: accentColor }}
+                />
+              </button>
+              {showAccentPicker && (
+                <div className={`absolute right-0 top-full mt-2 p-3 rounded-xl shadow-lg z-50
+                  ${darkMode ? 'bg-ios-card-dark border border-white/10' : 'bg-white border border-black/10'}`}>
+                  {/* Color presets grid - 3x3 */}
+                  <div className="grid grid-cols-3 gap-2 mb-3">
+                    {accentPresets.map((preset) => (
+                      <button
+                        key={preset.color}
+                        onClick={() => {
+                          setAccentColor(preset.color)
+                        }}
+                        className={`w-11 h-11 rounded-full ios-active ios-transition relative
+                          ${accentColor.toUpperCase() === preset.color.toUpperCase() ? 'ring-2 ring-white ring-offset-2 ring-offset-black/50' : ''}`}
+                        style={{ backgroundColor: preset.color }}
+                        title={preset.name}
+                      >
+                        {accentColor.toUpperCase() === preset.color.toUpperCase() && (
+                          <Check size={18} className="absolute inset-0 m-auto text-white drop-shadow-md" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                  
+                  {/* Hex input and color picker */}
+                  <div className={`flex items-center gap-2 pt-3 border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+                    <span className={`text-xs font-medium shrink-0 ${darkMode ? 'text-ios-gray' : 'text-ios-gray'}`}>HEX</span>
+                    <input
+                      type="text"
+                      value={hexInput}
+                      onChange={(e) => handleHexChange(e.target.value)}
+                      placeholder="#007AFF"
+                      maxLength={7}
+                      className={`w-24 px-2 py-1.5 rounded-lg text-sm font-mono uppercase
+                        ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}
+                        focus:outline-none focus:ring-1 focus:ring-ios-blue`}
+                    />
+                    <div className="relative shrink-0">
+                      <input
+                        type="color"
+                        value={accentColor}
+                        onChange={(e) => setAccentColor(e.target.value.toUpperCase())}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div 
+                        className="w-8 h-8 rounded-lg border-2 border-white/20 cursor-pointer"
+                        style={{ backgroundColor: accentColor }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           )
         }
       ]
@@ -374,13 +477,22 @@ export default function SettingsView() {
           action: (
             <div className="flex items-center gap-2">
               {updateAvailable && !downloadingUpdate && (
-                <button 
-                  onClick={handleDownloadUpdate}
-                  className="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium ios-active flex items-center gap-1"
-                >
-                  <ArrowDownCircle size={14} />
-                  Update
-                </button>
+                <>
+                  <button 
+                    onClick={() => setShowReleaseNotes(true)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Notes
+                  </button>
+                  <button 
+                    onClick={handleDownloadUpdate}
+                    className="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium ios-active flex items-center gap-1"
+                  >
+                    <ArrowDownCircle size={14} />
+                    Update
+                  </button>
+                </>
               )}
               {downloadingUpdate && (
                 <div className="flex items-center gap-2 text-ios-blue">
@@ -423,7 +535,7 @@ export default function SettingsView() {
         Settings
       </h1>
 
-      {settingGroups.map((group, groupIndex) => (
+      {settingGroups.map((group) => (
         <section key={group.title}>
           <h2 className="text-sm font-semibold text-ios-gray uppercase tracking-wider mb-2 px-3">
             {group.title}
@@ -508,8 +620,8 @@ export default function SettingsView() {
                   >
                     <defs>
                       <linearGradient id="eqFill" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" stopColor="#007AFF" stopOpacity="0.5" />
-                        <stop offset="100%" stopColor="#007AFF" stopOpacity="0.05" />
+                        <stop offset="0%" stopColor={accentColor} stopOpacity="0.5" />
+                        <stop offset="100%" stopColor={accentColor} stopOpacity="0.05" />
                       </linearGradient>
                     </defs>
                     <path
@@ -530,7 +642,7 @@ export default function SettingsView() {
                           C 400 ${72 - equalizerBands[3] * 5}, 400 ${72 - equalizerBands[4] * 5}, 450 ${72 - equalizerBands[4] * 5}
                           C 500 ${72 - equalizerBands[4] * 5}, 500 ${72 - equalizerBands[5] * 5}, 550 ${72 - equalizerBands[5] * 5}`}
                       fill="none"
-                      stroke="#007AFF"
+                      stroke={accentColor}
                       strokeWidth="3"
                       strokeLinecap="round"
                       strokeLinejoin="round"
@@ -542,7 +654,7 @@ export default function SettingsView() {
                         cy={72 - value * 5}
                         r="8"
                         fill="white"
-                        stroke="#007AFF"
+                        stroke={accentColor}
                         strokeWidth="3"
                       />
                     ))}
@@ -600,6 +712,84 @@ export default function SettingsView() {
           MADE BY FASTHAND
         </p>
       </section>
+
+      {/* Release Notes Modal */}
+      {showReleaseNotes && updateInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <div>
+                <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                  What's New in v{updateInfo.version}
+                </h2>
+                <p className="text-xs text-ios-gray mt-0.5">
+                  {updateInfo.publishedAt ? new Date(updateInfo.publishedAt).toLocaleDateString() : ''}
+                </p>
+              </div>
+              <button
+                onClick={() => setShowReleaseNotes(false)}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-black'} />
+              </button>
+            </div>
+            
+            {/* Release Notes Content */}
+            <div className={`px-5 py-4 max-h-[300px] overflow-y-auto text-sm leading-relaxed
+              ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+              {updateInfo.body ? (
+                <div className="whitespace-pre-wrap">
+                  {updateInfo.body.split('\n').map((line, i) => {
+                    // Format markdown-style headers
+                    if (line.startsWith('## ')) {
+                      return <h3 key={i} className={`font-semibold mt-3 mb-2 ${darkMode ? 'text-white' : 'text-black'}`}>{line.replace('## ', '')}</h3>
+                    }
+                    if (line.startsWith('### ')) {
+                      return <h4 key={i} className={`font-medium mt-2 mb-1 ${darkMode ? 'text-white' : 'text-black'}`}>{line.replace('### ', '')}</h4>
+                    }
+                    // Format bullet points
+                    if (line.startsWith('- ') || line.startsWith('* ')) {
+                      return <p key={i} className="ml-2 mb-1">• {line.slice(2)}</p>
+                    }
+                    // Empty lines
+                    if (!line.trim()) {
+                      return <br key={i} />
+                    }
+                    return <p key={i} className="mb-1">{line}</p>
+                  })}
+                </div>
+              ) : (
+                <p className="text-ios-gray">No release notes available.</p>
+              )}
+            </div>
+            
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <button
+                onClick={() => setShowReleaseNotes(false)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+              >
+                Later
+              </button>
+              <button
+                onClick={() => {
+                  setShowReleaseNotes(false)
+                  handleDownloadUpdate()
+                }}
+                className="flex-1 py-2.5 bg-ios-blue text-white rounded-xl text-sm font-medium ios-active flex items-center justify-center gap-2"
+              >
+                <ArrowDownCircle size={16} />
+                Update Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
