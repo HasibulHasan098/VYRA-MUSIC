@@ -67,7 +67,7 @@
 ### Windows
 
 1. Download the latest installer from [Releases](https://github.com/HasibulHasan098/VYRA-MUSIC/releases)
-2. Run `VYRA_1.0.4_x64-setup.exe`
+2. Run `VYRA_1.0.4_Setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -83,8 +83,15 @@ npm install
 # Run in development mode
 npm run tauri:dev
 
-# Build for production
+# Build for production (creates exe in src-tauri/target/release/)
 npm run tauri:build
+
+# Build custom installer (requires Inno Setup)
+# Output: installer/output/VYRA_x.x.x_Setup.exe
+npm run installer:build
+
+# Full release build (tauri build + installer)
+npm run release
 ```
 
 ## 🛠️ Tech Stack
