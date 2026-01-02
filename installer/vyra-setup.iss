@@ -31,10 +31,10 @@ Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
 
-; Custom appearance
-WizardImageFile=wizard-image.bmp
-WizardSmallImageFile=wizard-small.bmp
-WizardImageStretch=yes
+; Custom appearance - disabled for now
+; WizardImageFile=wizard-image.bmp
+; WizardSmallImageFile=wizard-small.bmp
+; WizardImageStretch=yes
 
 ; Modern look
 WindowVisible=yes
@@ -50,7 +50,7 @@ Name: "quicklaunchicon"; Description: "{cm:CreateQuickLaunchIcon}"; GroupDescrip
 
 [Files]
 ; Main executable and resources from Tauri build
-Source: "..\src-tauri\target\release\VYRA.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\src-tauri\target\release\vyra.exe"; DestDir: "{app}"; DestName: "VYRA.exe"; Flags: ignoreversion
 Source: "..\src-tauri\target\release\*.dll"; DestDir: "{app}"; Flags: ignoreversion skipifsourcedoesntexist
 
 [Icons]
