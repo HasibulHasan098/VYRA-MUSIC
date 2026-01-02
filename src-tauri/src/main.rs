@@ -10,6 +10,7 @@ use tauri::menu::{Menu, MenuItem};
 use warp::Filter;
 use std::convert::Infallible;
 use std::time::{SystemTime, UNIX_EPOCH};
+use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
 
 const INNERTUBE_API_KEY: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
 
@@ -18,6 +19,112 @@ struct AppState {
     visitor_data: Mutex<Option<String>>,
     stream_urls: Arc<Mutex<HashMap<String, String>>>,
     audio_cache: Arc<Mutex<HashMap<String, Vec<u8>>>>,
+}
+
+// Global media controls - must be kept alive for the duration of the app
+static MEDIA_CONTROLS: std::sync::OnceLock<Arc<Mutex<MediaControls>>> = std::sync::OnceLock::new();
+
+fn init_media_controls(app_handle: tauri::AppHandle) -> Option<Arc<Mutex<MediaControls>>> {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let config = PlatformConfig {
+            dbus_name: "vyra",
+            display_name: "VYRA",
+            hwnd: None,
+        };
+        
+        match MediaControls::new(config) {
+            Ok(mut controls) => {
+                let handle = app_handle.clone();
+                let _ = controls.attach(move |event: MediaControlEvent| {
+                    handle_media_event(&handle, event);
+                });
+                Some(Arc::new(Mutex::new(controls)))
+            }
+            Err(_) => None
+        }
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            CreateWindowExW, RegisterClassW, CS_HREDRAW, CS_VREDRAW,
+            WNDCLASSW, WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, WINDOW_EX_STYLE,
+        };
+        use windows::core::{PCWSTR, w};
+        
+        // Custom window procedure
+        unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+            windows::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam)
+        }
+        
+        unsafe {
+            // Create a hidden window class for SMTC
+            let class_name = w!("VYRAMediaClass");
+            
+            let wc = WNDCLASSW {
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(wnd_proc),
+                hInstance: windows::Win32::System::LibraryLoader::GetModuleHandleW(PCWSTR::null()).unwrap_or_default().into(),
+                lpszClassName: class_name,
+                ..Default::default()
+            };
+            
+            RegisterClassW(&wc);
+            
+            // Create hidden window
+            let hwnd = CreateWindowExW(
+                WINDOW_EX_STYLE::default(),
+                class_name,
+                w!("VYRA Media"),
+                WS_OVERLAPPEDWINDOW,
+                CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                HWND::default(),
+                None,
+                wc.hInstance,
+                None,
+            );
+            
+            if hwnd.is_err() {
+                return None;
+            }
+            
+            let hwnd = hwnd.unwrap();
+            
+            let config = PlatformConfig {
+                dbus_name: "vyra",
+                display_name: "VYRA",
+                hwnd: Some(hwnd.0 as *mut std::ffi::c_void),
+            };
+            
+            match MediaControls::new(config) {
+                Ok(mut controls) => {
+                    let handle = app_handle.clone();
+                    let _ = controls.attach(move |event: MediaControlEvent| {
+                        handle_media_event(&handle, event);
+                    });
+                    Some(Arc::new(Mutex::new(controls)))
+                }
+                Err(_) => None
+            }
+        }
+    }
+}
+
+fn handle_media_event(app_handle: &tauri::AppHandle, event: MediaControlEvent) {
+    if let Some(window) = app_handle.get_webview_window("main") {
+        let payload = match event {
+            MediaControlEvent::Play => "play",
+            MediaControlEvent::Pause => "pause",
+            MediaControlEvent::Toggle => "play_pause",
+            MediaControlEvent::Next => "next",
+            MediaControlEvent::Previous => "prev",
+            MediaControlEvent::Stop => "stop",
+            _ => return,
+        };
+        let _ = window.emit("media-control", payload);
+    }
 }
 
 fn create_context(visitor_data: Option<&str>, client_name: &str, client_version: &str) -> Value {
@@ -679,6 +786,97 @@ async fn open_url(url: String) -> Result<(), String> {
     open::that(&url).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn update_media_metadata(
+    title: String,
+    artist: String,
+    album: Option<String>,
+    cover_url: Option<String>,
+) -> Result<(), String> {
+    if let Some(controls_arc) = MEDIA_CONTROLS.get() {
+        if let Ok(mut controls) = controls_arc.lock() {
+            // First set playback to playing to activate SMTC
+            let _ = controls.set_playback(MediaPlayback::Playing { progress: None });
+            
+            // Then set metadata
+            controls.set_metadata(MediaMetadata {
+                title: Some(&title),
+                artist: Some(&artist),
+                album: album.as_deref(),
+                cover_url: cover_url.as_deref(),
+                duration: None,
+            }).map_err(|e| format!("{:?}", e))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn update_media_playback(is_playing: bool) -> Result<(), String> {
+    if let Some(controls_arc) = MEDIA_CONTROLS.get() {
+        if let Ok(mut controls) = controls_arc.lock() {
+            let playback = if is_playing {
+                MediaPlayback::Playing { progress: None }
+            } else {
+                MediaPlayback::Paused { progress: None }
+            };
+            controls.set_playback(playback).map_err(|e| format!("{:?}", e))?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn download_and_install_update(
+    state: State<'_, AppState>,
+    url: String,
+) -> Result<(), String> {
+    use std::io::Write;
+    use std::process::Command;
+    
+    // Download the update file
+    let response = state
+        .client
+        .get(&url)
+        .header("User-Agent", "VYRA-Music-Updater/1.0")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download update: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("Download failed with status: {}", response.status()));
+    }
+    
+    let bytes = response.bytes().await.map_err(|e| format!("Failed to read update file: {}", e))?;
+    
+    // Get temp directory
+    let temp_dir = std::env::temp_dir();
+    let file_name = url.split('/').last().unwrap_or("VYRA_update.exe");
+    let update_path = temp_dir.join(file_name);
+    
+    // Write the update file
+    let mut file = std::fs::File::create(&update_path)
+        .map_err(|e| format!("Failed to create update file: {}", e))?;
+    file.write_all(&bytes)
+        .map_err(|e| format!("Failed to write update file: {}", e))?;
+    
+    // Run the installer
+    #[cfg(target_os = "windows")]
+    {
+        Command::new(&update_path)
+            .spawn()
+            .map_err(|e| format!("Failed to run installer: {}", e))?;
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    {
+        // On non-Windows, just open the file location
+        open::that(temp_dir).map_err(|e| format!("Failed to open download location: {}", e))?;
+    }
+    
+    Ok(())
+}
+
 // Start audio proxy server with cache support
 async fn start_audio_proxy_with_cache(
     stream_urls: Arc<Mutex<HashMap<String, String>>>,
@@ -908,6 +1106,12 @@ fn main() {
             }
         }))
         .setup(|app| {
+            // Initialize Windows media controls (SMTC)
+            let app_handle = app.handle().clone();
+            if let Some(controls) = init_media_controls(app_handle) {
+                let _ = MEDIA_CONTROLS.set(controls);
+            }
+            
             // Create system tray with media controls
             let prev = MenuItem::with_id(app, "prev", "⏮ Previous", true, None::<&str>)?;
             let play_pause = MenuItem::with_id(app, "play_pause", "⏯ Play/Pause", true, None::<&str>)?;
@@ -980,7 +1184,10 @@ fn main() {
             cache_audio,
             get_cached_audio,
             clear_audio_cache,
-            open_url
+            open_url,
+            update_media_metadata,
+            update_media_playback,
+            download_and_install_update
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
