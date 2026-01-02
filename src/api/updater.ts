@@ -1,5 +1,7 @@
 // Update checker for VYRA Music
-// Checks GitHub releases for new versions
+// Checks GitHub releases for new versions via Tauri backend
+
+import { invoke } from '@tauri-apps/api/core'
 
 const GITHUB_REPO = 'HasibulHasan098/VYRA-MUSIC'
 const CURRENT_VERSION = '1.0.2'
@@ -28,9 +30,19 @@ export function compareVersions(current: string, latest: string): number {
   return 0
 }
 
-// Fetch latest release from GitHub
+// Check if running in Tauri
+const isTauri = () => typeof window !== 'undefined' && '__TAURI__' in window
+
+// Fetch latest release from GitHub (via Tauri backend to avoid CORS/rate limiting)
 export async function checkForUpdates(): Promise<ReleaseInfo | null> {
   try {
+    if (isTauri()) {
+      // Use Tauri backend to fetch releases
+      const release = await invoke<any>('check_for_updates')
+      return parseRelease(release)
+    }
+    
+    // Fallback for browser (won't work due to CORS, but kept for completeness)
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
       {
@@ -40,34 +52,12 @@ export async function checkForUpdates(): Promise<ReleaseInfo | null> {
       }
     )
     
-    if (!response.ok) {
-      // Try to get any release if latest doesn't exist
-      const releasesResponse = await fetch(
-        `https://api.github.com/repos/${GITHUB_REPO}/releases`,
-        {
-          headers: {
-            'Accept': 'application/vnd.github.v3+json'
-          }
-        }
-      )
-      
-      if (!releasesResponse.ok) {
-        console.error('Failed to fetch releases')
-        return null
-      }
-      
-      const releases = await releasesResponse.json()
-      if (!releases || releases.length === 0) {
-        return null
-      }
-      
-      // Get the first (latest) release
-      const release = releases[0]
+    if (response.ok) {
+      const release = await response.json()
       return parseRelease(release)
     }
     
-    const release = await response.json()
-    return parseRelease(release)
+    return null
   } catch (error) {
     console.error('Failed to check for updates:', error)
     return null
@@ -75,21 +65,36 @@ export async function checkForUpdates(): Promise<ReleaseInfo | null> {
 }
 
 function parseRelease(release: any): ReleaseInfo {
-  // Find Windows exe asset
-  const exeAsset = release.assets?.find((asset: any) => 
-    asset.name.endsWith('.exe') || 
-    asset.name.endsWith('.msi') ||
-    asset.name.includes('windows')
+  // Find Windows installer asset (prefer exe setup, then msi)
+  const assets = release.assets || []
+  
+  // Look for setup exe first
+  let downloadAsset = assets.find((asset: any) => 
+    asset.name.toLowerCase().includes('setup') && asset.name.endsWith('.exe')
   )
   
+  // Then try any exe
+  if (!downloadAsset) {
+    downloadAsset = assets.find((asset: any) => asset.name.endsWith('.exe'))
+  }
+  
+  // Then try msi
+  if (!downloadAsset) {
+    downloadAsset = assets.find((asset: any) => asset.name.endsWith('.msi'))
+  }
+  
+  // Get version from tag_name (handles both "v1.0.2" and "1.0.2" formats)
+  const tagName = release.tag_name || ''
+  const version = tagName.replace(/^v/, '') || release.name?.replace(/^v/, '') || '0.0.0'
+  
   return {
-    version: release.tag_name?.replace(/^v/, '') || release.name || '0.0.0',
-    tagName: release.tag_name || '',
-    name: release.name || 'New Release',
+    version,
+    tagName,
+    name: release.name || `Version ${version}`,
     body: release.body || '',
     publishedAt: release.published_at || '',
-    downloadUrl: exeAsset?.browser_download_url || null,
-    htmlUrl: release.html_url || `https://github.com/${GITHUB_REPO}/releases`
+    downloadUrl: downloadAsset?.browser_download_url || null,
+    htmlUrl: release.html_url || `https://github.com/${GITHUB_REPO}/releases/tag/${tagName}`
   }
 }
 

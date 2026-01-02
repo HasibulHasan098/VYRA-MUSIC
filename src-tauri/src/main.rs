@@ -944,6 +944,48 @@ fn clear_discord_presence() -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn check_for_updates(
+    state: State<'_, AppState>,
+) -> Result<Value, String> {
+    // Fetch latest release from GitHub
+    let response = state
+        .client
+        .get("https://api.github.com/repos/HasibulHasan098/VYRA-MUSIC/releases/latest")
+        .header("User-Agent", "VYRA-Music-Updater/1.0")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch releases: {}", e))?;
+    
+    if response.status().is_success() {
+        let release: Value = response.json().await.map_err(|e| format!("Failed to parse release: {}", e))?;
+        return Ok(release);
+    }
+    
+    // If /latest fails, try to get all releases
+    let response = state
+        .client
+        .get("https://api.github.com/repos/HasibulHasan098/VYRA-MUSIC/releases")
+        .header("User-Agent", "VYRA-Music-Updater/1.0")
+        .header("Accept", "application/vnd.github.v3+json")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch releases: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("GitHub API returned status: {}", response.status()));
+    }
+    
+    let releases: Vec<Value> = response.json().await.map_err(|e| format!("Failed to parse releases: {}", e))?;
+    
+    if releases.is_empty() {
+        return Err("No releases found".to_string());
+    }
+    
+    Ok(releases[0].clone())
+}
+
+#[tauri::command]
 async fn download_and_install_update(
     state: State<'_, AppState>,
     url: String,
@@ -976,6 +1018,12 @@ async fn download_and_install_update(
         .map_err(|e| format!("Failed to create update file: {}", e))?;
     file.write_all(&bytes)
         .map_err(|e| format!("Failed to write update file: {}", e))?;
+    
+    // Explicitly close the file before running installer
+    drop(file);
+    
+    // Small delay to ensure file is fully released
+    std::thread::sleep(std::time::Duration::from_millis(500));
     
     // Run the installer
     #[cfg(target_os = "windows")]
@@ -1310,6 +1358,7 @@ fn main() {
             update_media_playback,
             update_discord_presence,
             clear_discord_presence,
+            check_for_updates,
             download_and_install_update
         ])
         .run(tauri::generate_context!())

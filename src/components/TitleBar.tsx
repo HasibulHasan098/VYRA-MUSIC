@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
-import { Search, Settings, X, Minus, Square } from 'lucide-react'
+import { Search, Settings, X, Minus, Square, Download } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore } from '../store/playerStore'
+import { isUpdateAvailable, ReleaseInfo } from '../api/updater'
 import Tooltip from './Tooltip'
 
 // Tauri window controls
@@ -42,6 +43,24 @@ export default function TitleBar() {
   const { setView, performSearch, searchQuery, setSearchQuery, darkMode, currentView, minimizeToTray, closeLyrics } = useAppStore()
   const { savePosition } = usePlayerStore()
   const [localQuery, setLocalQuery] = useState(searchQuery)
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  const [updateInfo, setUpdateInfo] = useState<ReleaseInfo | null>(null)
+
+  // Check for updates on mount
+  useEffect(() => {
+    const checkUpdate = async () => {
+      try {
+        const result = await isUpdateAvailable()
+        if (result.available && result.release) {
+          setUpdateAvailable(true)
+          setUpdateInfo(result.release)
+        }
+      } catch {
+        // Silently fail
+      }
+    }
+    checkUpdate()
+  }, [])
 
   // Auto-search as user types (debounced)
   useEffect(() => {
@@ -71,8 +90,20 @@ export default function TitleBar() {
       className={`h-fib-55 flex items-center px-fib-13 border-b
         ${darkMode ? 'bg-ios-card-dark border-ios-separator-dark' : 'bg-ios-card border-ios-separator'}`}
     >
-      {/* Left spacer - draggable area */}
-      <div data-tauri-drag-region className="w-32 flex-shrink-0 h-full" />
+      {/* Left side - Update button or empty spacer */}
+      <div data-tauri-drag-region className="w-32 flex-shrink-0 h-full flex items-center">
+        {updateAvailable && updateInfo && (
+          <Tooltip text={`Update to v${updateInfo.version}`} position="bottom">
+            <button
+              onClick={() => { closeLyrics(); setView('settings') }}
+              className="flex items-center gap-fib-5 px-fib-8 py-fib-5 rounded-fib-8 bg-ios-blue text-white text-fib-13 font-medium ios-active hover:bg-ios-blue/90 ios-transition"
+            >
+              <Download size={14} />
+              <span>Update</span>
+            </button>
+          </Tooltip>
+        )}
+      </div>
 
       {/* Search bar - centered */}
       <div data-tauri-drag-region className="flex-1 flex justify-center items-center h-full">
