@@ -40,11 +40,13 @@ export default function QueueView() {
           <div className={`flex items-center gap-fib-13 p-fib-13 rounded-fib-13
             ${darkMode ? 'bg-ios-blue/20' : 'bg-ios-blue/10'}`}>
             <div className="relative">
-              <img 
-                src={currentTrack.thumbnail} 
-                alt={currentTrack.title}
-                className="w-fib-55 h-fib-55 rounded-fib-8 object-cover"
-              />
+              <div className="w-fib-55 h-fib-55 rounded-fib-8 overflow-hidden">
+                <img 
+                  src={`https://img.youtube.com/vi/${currentTrack.id}/hqdefault.jpg`} 
+                  alt={currentTrack.title}
+                  className="w-full h-full object-cover scale-[1.35]"
+                />
+              </div>
               {isPlaying && (
                 <div className="absolute -right-1 -bottom-1 w-5 h-5 bg-ios-blue rounded-full flex items-center justify-center shadow-lg">
                   <Music2 size={12} className="text-white" />
@@ -112,11 +114,13 @@ export default function QueueView() {
 
                   {/* Thumbnail */}
                   <div className="relative flex-shrink-0">
-                    <img 
-                      src={track.thumbnail} 
-                      alt={track.title}
-                      className="w-fib-34 h-fib-34 rounded-fib-5 object-cover"
-                    />
+                    <div className="w-fib-34 h-fib-34 rounded-fib-5 overflow-hidden">
+                      <img 
+                        src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                        alt={track.title}
+                        className="w-full h-full object-cover scale-[1.35]"
+                      />
+                    </div>
                     {isActive && isPlaying && (
                       <div className="absolute -right-1 -bottom-1 w-4 h-4 bg-ios-blue rounded-full flex items-center justify-center shadow">
                         <Music2 size={10} className="text-white" />

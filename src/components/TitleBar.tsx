@@ -39,7 +39,7 @@ async function closeWindow(minimizeToTray: boolean, savePosition: () => void) {
 }
 
 export default function TitleBar() {
-  const { setView, performSearch, searchQuery, setSearchQuery, darkMode, currentView, minimizeToTray } = useAppStore()
+  const { setView, performSearch, searchQuery, setSearchQuery, darkMode, currentView, minimizeToTray, closeLyrics } = useAppStore()
   const { savePosition } = usePlayerStore()
   const [localQuery, setLocalQuery] = useState(searchQuery)
 
@@ -83,7 +83,7 @@ export default function TitleBar() {
             type="text"
             placeholder="Search songs, artists, albums..."
             value={localQuery}
-            onChange={(e) => setLocalQuery(e.target.value)}
+            onChange={(e) => { closeLyrics(); setLocalQuery(e.target.value) }}
             className={`flex-1 bg-transparent outline-none text-fib-13
               ${darkMode ? 'text-white placeholder-ios-gray' : 'text-black placeholder-ios-gray'}`}
           />
@@ -100,7 +100,7 @@ export default function TitleBar() {
         {/* Settings button */}
         <Tooltip text="Settings" position="bottom">
           <button
-            onClick={() => setView('settings')}
+            onClick={() => { closeLyrics(); setView('settings') }}
             className={`p-fib-8 rounded-fib-8 ios-active ios-transition
               ${currentView === 'settings' ? 'bg-ios-blue text-white' : 'hover:bg-ios-gray/20'}
               ${darkMode && currentView !== 'settings' ? 'text-white' : ''}`}

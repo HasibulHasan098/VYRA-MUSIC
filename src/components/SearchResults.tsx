@@ -231,11 +231,13 @@ export default function SearchResults() {
                     className={`group relative p-fib-21 rounded-fib-13 cursor-pointer ios-transition
                       ${darkMode ? 'bg-ios-card-dark hover:bg-ios-card-secondary-dark' : 'bg-ios-card hover:bg-ios-card-secondary'}`}
                   >
-                    <img 
-                      src={topResult.thumbnail} 
-                      alt={topResult.title}
-                      className="w-fib-89 h-fib-89 rounded-fib-8 object-cover shadow-ios-lg mb-fib-13"
-                    />
+                    <div className="w-fib-89 h-fib-89 rounded-fib-8 overflow-hidden shadow-ios-lg mb-fib-13">
+                      <img 
+                        src={`https://img.youtube.com/vi/${topResult.id}/hqdefault.jpg`} 
+                        alt={topResult.title}
+                        className="w-full h-full object-cover scale-[1.35]"
+                      />
+                    </div>
                     <h3 className={`text-fib-34 font-bold mb-fib-5 truncate ${darkMode ? 'text-white' : 'text-black'}`}>
                       {topResult.title}
                     </h3>

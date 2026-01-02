@@ -123,3 +123,48 @@ input[type="range"]::-webkit-slider-runnable-track {
     opacity: 1;
   }
 }
+
+/* Equalizer vertical slider styles */
+input[type="range"][style*="vertical-lr"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"][style*="vertical-lr"]::-webkit-slider-runnable-track {
+  width: 4px;
+  height: 100%;
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+}
+
+input[type="range"][style*="vertical-lr"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: white;
+  border: 2px solid #007AFF;
+  border-radius: 50%;
+  cursor: pointer;
+  margin-left: -6px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"][style*="vertical-lr"]::-moz-range-track {
+  width: 4px;
+  height: 100%;
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+}
+
+input[type="range"][style*="vertical-lr"]::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  background: white;
+  border: 2px solid #007AFF;
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}

@@ -160,7 +160,7 @@ export default function LibraryView() {
                   <div className={`w-fib-55 h-fib-55 rounded-fib-8 flex items-center justify-center overflow-hidden
                     ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
                     {playlist.songs.length > 0 ? (
-                      <img src={playlist.songs[0].thumbnail} alt="" className="w-full h-full object-cover" />
+                      <img src={`https://img.youtube.com/vi/${playlist.songs[0].id}/hqdefault.jpg`} alt="" className="w-full h-full object-cover scale-[1.35]" />
                     ) : (
                       <Music size={21} className="text-ios-gray" />
                     )}
@@ -471,11 +471,13 @@ function DownloadItem({
   return (
     <div className={`flex items-center gap-fib-13 p-fib-13 rounded-fib-13 ${darkMode ? 'bg-ios-card-dark' : 'bg-ios-card'}`}>
       {/* Thumbnail */}
-      <img 
-        src={track.thumbnail} 
-        alt=""
-        className="w-fib-55 h-fib-55 rounded-fib-8 object-cover flex-shrink-0"
-      />
+      <div className="w-fib-55 h-fib-55 rounded-fib-8 overflow-hidden flex-shrink-0">
+        <img 
+          src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+          alt=""
+          className="w-full h-full object-cover scale-[1.35]"
+        />
+      </div>
       
       {/* Info */}
       <div className="flex-1 min-w-0">
@@ -571,11 +573,13 @@ function DownloadedTrackRow({
       </span>
       
       {/* Thumbnail */}
-      <img 
-        src={track.thumbnail} 
-        alt=""
-        className="w-fib-34 h-fib-34 rounded-fib-5 object-cover flex-shrink-0"
-      />
+      <div className="w-fib-34 h-fib-34 rounded-fib-5 overflow-hidden flex-shrink-0">
+        <img 
+          src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+          alt=""
+          className="w-full h-full object-cover scale-[1.35]"
+        />
+      </div>
       
       {/* Info */}
       <div className="flex-1 min-w-0">

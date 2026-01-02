@@ -64,11 +64,13 @@ export default function PlaylistView() {
       <div className="flex items-end gap-fib-21">
         {/* Thumbnail */}
         {currentPlaylist.thumbnail ? (
-          <img
-            src={currentPlaylist.thumbnail}
-            alt={currentPlaylist.title}
-            className="w-fib-144 h-fib-144 rounded-fib-13 object-cover shadow-ios-lg"
-          />
+          <div className="w-fib-144 h-fib-144 rounded-fib-13 overflow-hidden shadow-ios-lg">
+            <img
+              src={currentPlaylist.thumbnail}
+              alt={currentPlaylist.title}
+              className="w-full h-full object-cover scale-[1.4]"
+            />
+          </div>
         ) : (
           <div className={`w-fib-144 h-fib-144 rounded-fib-13 flex items-center justify-center
             ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>

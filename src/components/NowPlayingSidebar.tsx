@@ -53,12 +53,14 @@ export default function NowPlayingSidebar() {
                 <Music size={24} className="text-white/80" />
               </div>
             ) : (
-              <img 
-                src={currentTrack.thumbnail} 
-                alt=""
-                className="w-[50px] h-[50px] rounded-fib-8 object-cover shadow-ios"
-                onError={() => setImgError(true)}
-              />
+              <div className="w-[50px] h-[50px] rounded-fib-8 overflow-hidden shadow-ios">
+                <img 
+                  src={`https://img.youtube.com/vi/${currentTrack.id}/hqdefault.jpg`} 
+                  alt=""
+                  className="w-full h-full object-cover scale-[1.35]"
+                  onError={() => setImgError(true)}
+                />
+              </div>
             )}
           </div>
         </Tooltip>
@@ -112,12 +114,14 @@ export default function NowPlayingSidebar() {
               <Music size={55} className="text-white/80" />
             </div>
           ) : (
-            <img 
-              src={currentTrack.thumbnail} 
-              alt=""
-              className="w-full aspect-square rounded-fib-13 object-cover"
-              onError={() => setImgError(true)}
-            />
+            <div className="w-full aspect-square rounded-fib-13 overflow-hidden">
+              <img 
+                src={`https://img.youtube.com/vi/${currentTrack.id}/maxresdefault.jpg`} 
+                alt=""
+                className="w-full h-full object-cover scale-[1.15]"
+                onError={() => setImgError(true)}
+              />
+            </div>
           )}
         </div>
 
@@ -223,12 +227,14 @@ function NextTrackItem({
           <Music size={16} className="text-white/80" />
         </div>
       ) : (
-        <img 
-          src={track.thumbnail} 
-          alt=""
-          className="w-[40px] h-[40px] rounded-fib-5 object-cover flex-shrink-0"
-          onError={() => setImgError(true)}
-        />
+        <div className="w-[40px] h-[40px] rounded-fib-5 overflow-hidden flex-shrink-0">
+          <img 
+            src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+            alt=""
+            className="w-full h-full object-cover scale-[1.35]"
+            onError={() => setImgError(true)}
+          />
+        </div>
       )}
       <div className="flex-1 min-w-0">
         <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
@@ -267,12 +273,14 @@ function CollapsedQueueItem({
             <Music size={18} className="text-white/80" />
           </div>
         ) : (
-          <img 
-            src={track.thumbnail} 
-            alt=""
-            className="w-[44px] h-[44px] object-cover"
-            onError={() => setImgError(true)}
-          />
+          <div className="w-[44px] h-[44px] overflow-hidden">
+            <img 
+              src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+              alt=""
+              className="w-full h-full object-cover scale-[1.35]"
+              onError={() => setImgError(true)}
+            />
+          </div>
         )}
       </div>
     </Tooltip>

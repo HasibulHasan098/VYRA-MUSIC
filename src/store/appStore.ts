@@ -33,6 +33,7 @@ interface AppState {
   darkMode: boolean
   sidebarCollapsed: boolean
   nowPlayingCollapsed: boolean
+  showLyrics: boolean
   libraryTab: LibraryTab
   searchQuery: string
   searchSuggestions: string[]
@@ -56,6 +57,12 @@ interface AppState {
   maxCachedSongs: number
   // App behavior
   minimizeToTray: boolean
+  discordRpcEnabled: boolean
+  autoplayEnabled: boolean
+  // Equalizer
+  equalizerEnabled: boolean
+  equalizerPreset: string
+  equalizerBands: number[]
   // User playlists
   userPlaylists: UserPlaylist[]
   selectedUserPlaylist: UserPlaylist | null
@@ -66,6 +73,8 @@ interface AppState {
   toggleDarkMode: () => void
   toggleSidebar: () => void
   toggleNowPlaying: () => void
+  toggleLyrics: () => void
+  closeLyrics: () => void
   setSearchQuery: (query: string) => void
   fetchSearchSuggestions: (query: string) => Promise<void>
   performSearch: (query: string) => Promise<void>
@@ -81,6 +90,13 @@ interface AppState {
   removeDownloadedSong: (trackId: string) => void
   isDownloaded: (trackId: string) => boolean
   toggleMinimizeToTray: () => void
+  toggleDiscordRpc: () => void
+  toggleAutoplay: () => void
+  // Equalizer functions
+  toggleEqualizer: () => void
+  setEqualizerPreset: (preset: string) => void
+  setEqualizerBand: (index: number, value: number) => void
+  resetEqualizer: () => void
   // Caching functions
   toggleCacheEnabled: () => void
   addToCache: (track: Song) => void
@@ -105,6 +121,7 @@ export const useAppStore = create<AppState>()(
       darkMode: true,
       sidebarCollapsed: false,
       nowPlayingCollapsed: false,
+      showLyrics: false,
       libraryTab: 'liked',
       searchQuery: '',
       searchSuggestions: [],
@@ -128,12 +145,20 @@ export const useAppStore = create<AppState>()(
       maxCachedSongs: 40,
       // App behavior
       minimizeToTray: true,
+      discordRpcEnabled: true,
+      autoplayEnabled: true,
+      // Equalizer
+      equalizerEnabled: false,
+      equalizerPreset: 'flat',
+      equalizerBands: [0, 0, 0, 0, 0, 0], // 60Hz, 150Hz, 400Hz, 1kHz, 2.4kHz, 15kHz
       // User playlists
       userPlaylists: [],
       selectedUserPlaylist: null,
 
       setView: (view) => {
         const { currentView, viewHistory, searchQuery, searchResults } = get()
+        // Always close lyrics when navigating
+        set({ showLyrics: false })
         // Don't add to history if navigating to same view
         if (view !== currentView) {
           set({ 
@@ -149,6 +174,8 @@ export const useAppStore = create<AppState>()(
 
       setLibraryTab: (tab) => {
         const { currentView, viewHistory, searchQuery, searchResults } = get()
+        // Always close lyrics when navigating
+        set({ showLyrics: false })
         if (currentView !== 'library') {
           set({ 
             currentView: 'library',
@@ -179,6 +206,8 @@ export const useAppStore = create<AppState>()(
       toggleDarkMode: () => set((state) => ({ darkMode: !state.darkMode })),
       toggleSidebar: () => set((state) => ({ sidebarCollapsed: !state.sidebarCollapsed })),
       toggleNowPlaying: () => set((state) => ({ nowPlayingCollapsed: !state.nowPlayingCollapsed })),
+      toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
+      closeLyrics: () => set({ showLyrics: false }),
       setSearchQuery: (query) => set({ searchQuery: query }),
 
       fetchSearchSuggestions: async (query) => {
@@ -222,8 +251,65 @@ export const useAppStore = create<AppState>()(
         }
         set({ isLoadingRecommendations: true })
         try {
+          // Get recommendations from YouTube's radio feature
           const songs = await youtube.getRecommendations(videoIds)
-          set({ recommendations: songs, isLoadingRecommendations: false })
+          
+          // Also analyze user's listening history to get favorite artists
+          const { usePlayerStore } = await import('./playerStore')
+          const { recentlyPlayed, likedSongs } = usePlayerStore.getState()
+          
+          // Count artist occurrences in history
+          const artistCounts: Record<string, { name: string; count: number }> = {}
+          const allSongs = [...recentlyPlayed, ...likedSongs]
+          
+          for (const song of allSongs) {
+            for (const artist of song.artists) {
+              if (artist.name && artist.name !== 'Unknown Artist') {
+                const key = artist.name.toLowerCase()
+                if (!artistCounts[key]) {
+                  artistCounts[key] = { name: artist.name, count: 0 }
+                }
+                artistCounts[key].count++
+              }
+            }
+          }
+          
+          // Get top 3 favorite artists
+          const topArtists = Object.values(artistCounts)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 3)
+            .map(a => a.name)
+          
+          // Search for more songs from favorite artists
+          let artistSongs: typeof songs = []
+          if (topArtists.length > 0) {
+            try {
+              const artistSearches = await Promise.allSettled(
+                topArtists.map(artist => youtube.searchAll(`${artist} songs`))
+              )
+              
+              for (const result of artistSearches) {
+                if (result.status === 'fulfilled' && result.value.songs.length > 0) {
+                  // Filter out songs already in recommendations or history
+                  const existingIds = new Set([
+                    ...songs.map(s => s.id),
+                    ...recentlyPlayed.map(s => s.id),
+                    ...likedSongs.map(s => s.id)
+                  ])
+                  const newSongs = result.value.songs.filter(s => !existingIds.has(s.id))
+                  artistSongs.push(...newSongs.slice(0, 5))
+                }
+              }
+            } catch {
+              // Silently fail artist search
+            }
+          }
+          
+          // Combine and shuffle recommendations
+          const combined = [...songs, ...artistSongs]
+          const shuffled = combined.sort(() => Math.random() - 0.5)
+          
+          set({ recommendations: shuffled.slice(0, 20), isLoadingRecommendations: false })
         } catch {
           set({ recommendations: [], isLoadingRecommendations: false })
         }
@@ -379,6 +465,82 @@ export const useAppStore = create<AppState>()(
 
       toggleMinimizeToTray: () => set((state) => ({ minimizeToTray: !state.minimizeToTray })),
 
+      toggleDiscordRpc: () => {
+        const newValue = !get().discordRpcEnabled
+        set({ discordRpcEnabled: newValue })
+        // Clear Discord presence if disabled
+        if (!newValue && typeof window !== 'undefined' && window.__TAURI__) {
+          import('@tauri-apps/api/core').then(({ invoke }) => {
+            invoke('clear_discord_presence').catch(() => {})
+          })
+        }
+      },
+
+      toggleAutoplay: () => set((state) => ({ autoplayEnabled: !state.autoplayEnabled })),
+
+      // Equalizer functions
+      toggleEqualizer: () => {
+        set((state) => ({ equalizerEnabled: !state.equalizerEnabled }))
+        // Update audio filters
+        import('./playerStore').then(({ usePlayerStore }) => {
+          usePlayerStore.getState().updateEqualizer()
+        })
+      },
+      
+      setEqualizerPreset: (preset) => {
+        const presets: Record<string, number[]> = {
+          flat: [0, 0, 0, 0, 0, 0],
+          acoustic: [4, 3, 1, 1, 3, 2],
+          'bass booster': [6, 5, 3, 0, 0, 0],
+          'bass reducer': [-6, -4, -2, 0, 0, 0],
+          classical: [4, 3, 0, 0, 2, 3],
+          dance: [4, 6, 4, 0, 2, 4],
+          deep: [5, 4, 2, 1, 2, 3],
+          electronic: [5, 4, 0, -2, 2, 5],
+          hiphop: [5, 4, 1, 3, -1, 2],
+          jazz: [3, 2, 1, 2, 3, 4],
+          latin: [3, 2, 0, 0, 2, 4],
+          loudness: [5, 3, 0, 0, 3, 5],
+          lounge: [2, 1, 0, -1, 1, 2],
+          piano: [2, 1, 0, 2, 3, 2],
+          pop: [-1, 2, 4, 3, 1, -1],
+          rnb: [3, 6, 4, 1, 3, 2],
+          rock: [5, 3, -1, 1, 3, 5],
+          'small speakers': [-2, 1, 3, 3, 2, 1],
+          'spoken word': [-1, 0, 1, 3, 2, 0],
+          'treble booster': [0, 0, 0, 2, 4, 6],
+        }
+        set({ 
+          equalizerPreset: preset, 
+          equalizerBands: presets[preset] || presets.flat 
+        })
+        // Update audio filters
+        import('./playerStore').then(({ usePlayerStore }) => {
+          usePlayerStore.getState().updateEqualizer()
+        })
+      },
+      
+      setEqualizerBand: (index, value) => {
+        const bands = [...get().equalizerBands]
+        bands[index] = value
+        set({ equalizerBands: bands, equalizerPreset: 'custom' })
+        // Update audio filters
+        import('./playerStore').then(({ usePlayerStore }) => {
+          usePlayerStore.getState().updateEqualizer()
+        })
+      },
+      
+      resetEqualizer: () => {
+        set({ 
+          equalizerBands: [0, 0, 0, 0, 0, 0], 
+          equalizerPreset: 'flat' 
+        })
+        // Update audio filters
+        import('./playerStore').then(({ usePlayerStore }) => {
+          usePlayerStore.getState().updateEqualizer()
+        })
+      },
+
       // Playlist functions
       createPlaylist: (name) => {
         const id = `playlist-${Date.now()}`
@@ -466,6 +628,11 @@ export const useAppStore = create<AppState>()(
         cacheEnabled: state.cacheEnabled,
         cachedSongs: state.cachedSongs,
         minimizeToTray: state.minimizeToTray,
+        discordRpcEnabled: state.discordRpcEnabled,
+        autoplayEnabled: state.autoplayEnabled,
+        equalizerEnabled: state.equalizerEnabled,
+        equalizerPreset: state.equalizerPreset,
+        equalizerBands: state.equalizerBands,
         userPlaylists: state.userPlaylists
       })
     }

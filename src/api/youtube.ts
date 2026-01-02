@@ -272,14 +272,130 @@ const DEMO_SONGS: Song[] = [
 // Store current stream URL for audio proxy
 let currentStreamUrl: string | null = null
 
+// Parse playlist from home/browse response
+const parsePlaylist = (renderer: any): PlaylistItem | null => {
+  try {
+    const title = renderer.title?.runs?.[0]?.text
+    const browseId = renderer.navigationEndpoint?.browseEndpoint?.browseId
+    if (!title || !browseId) return null
+    
+    // Must be a playlist (VL or RDCLAK prefix)
+    if (!browseId.startsWith('VL') && !browseId.startsWith('RDCLAK')) return null
+
+    const subtitle = renderer.subtitle?.runs || []
+    let author: Artist | undefined
+    let songCount: string | undefined
+
+    for (const run of subtitle) {
+      const artistId = run.navigationEndpoint?.browseEndpoint?.browseId
+      if (artistId?.startsWith('UC')) {
+        author = { id: artistId, name: run.text }
+      } else if (run.text?.includes('song') || run.text?.includes('track')) {
+        songCount = run.text
+      }
+    }
+
+    const thumbnails = renderer.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || []
+    const thumbnail = thumbnails[thumbnails.length - 1]?.url || ''
+
+    return {
+      id: browseId,
+      title,
+      author,
+      songCount,
+      thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail
+    }
+  } catch {
+    return null
+  }
+}
+
+// Parse artist from home/browse response
+const parseArtistItem = (renderer: any): ArtistItem | null => {
+  try {
+    const title = renderer.title?.runs?.[0]?.text
+    const browseId = renderer.navigationEndpoint?.browseEndpoint?.browseId
+    if (!title || !browseId) return null
+    
+    // Must be an artist (UC prefix)
+    if (!browseId.startsWith('UC')) return null
+
+    const subtitle = renderer.subtitle?.runs || []
+    let subscribers: string | undefined
+
+    for (const run of subtitle) {
+      if (run.text?.includes('subscriber')) {
+        subscribers = run.text
+      }
+    }
+
+    const thumbnails = renderer.thumbnailRenderer?.musicThumbnailRenderer?.thumbnail?.thumbnails || []
+    const thumbnail = thumbnails[thumbnails.length - 1]?.url || ''
+
+    return {
+      id: browseId,
+      name: title,
+      thumbnail: thumbnail.startsWith('//') ? 'https:' + thumbnail : thumbnail,
+      subscribers
+    }
+  } catch {
+    return null
+  }
+}
+
+// Helper to parse items from shelf contents
+const parseShelfItems = (contents: any[]): any[] => {
+  const items: any[] = []
+  for (const content of contents) {
+    if (content.musicTwoRowItemRenderer) {
+      const renderer = content.musicTwoRowItemRenderer
+      const browseId = renderer.navigationEndpoint?.browseEndpoint?.browseId || ''
+      
+      // Try to determine type by browseId prefix
+      if (browseId.startsWith('UC')) {
+        const artist = parseArtistItem(renderer)
+        if (artist) items.push(artist)
+      } else if (browseId.startsWith('VL') || browseId.startsWith('RDCLAK')) {
+        const playlist = parsePlaylist(renderer)
+        if (playlist) items.push(playlist)
+      } else if (browseId.startsWith('MPREb')) {
+        const album = parseAlbum(renderer)
+        if (album) items.push(album)
+      } else {
+        // Try album first, then playlist
+        const album = parseAlbum(renderer)
+        if (album) {
+          items.push(album)
+        } else {
+          const playlist = parsePlaylist(renderer)
+          if (playlist) items.push(playlist)
+        }
+      }
+    } else if (content.musicResponsiveListItemRenderer) {
+      const song = parseSong(content.musicResponsiveListItemRenderer)
+      if (song) items.push(song)
+    }
+  }
+  return items
+}
+
 class YouTubeMusic {
+  
+  // Sections to skip (video-related)
+  private skipSectionTitles = ['video', 'music video', 'videos']
+  
+  private shouldSkipSection(title: string): boolean {
+    const lowerTitle = title.toLowerCase()
+    return this.skipSectionTitles.some(skip => lowerTitle.includes(skip))
+  }
   
   async getHome(): Promise<HomeSection[]> {
     if (isTauri()) {
       try {
-        const data = await invoke<any>('yt_browse', { browseId: 'FEmusic_home' })
-        
         const sections: HomeSection[] = []
+        
+        // Fetch main home content
+        const data = await invoke<any>('yt_browse', { browseId: 'FEmusic_home' })
         const contents = data.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents || []
 
         for (const section of contents) {
@@ -288,20 +404,109 @@ class YouTubeMusic {
 
           const title = shelf.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.[0]?.text
           if (!title) continue
+          
+          // Skip video sections
+          if (this.shouldSkipSection(title)) continue
 
-          const items: any[] = []
-          for (const content of shelf.contents || []) {
-            if (content.musicTwoRowItemRenderer) {
-              const album = parseAlbum(content.musicTwoRowItemRenderer)
-              if (album) items.push(album)
-            } else if (content.musicResponsiveListItemRenderer) {
-              const song = parseSong(content.musicResponsiveListItemRenderer)
-              if (song) items.push(song)
-            }
-          }
+          const items = parseShelfItems(shelf.contents || [])
 
           if (items.length > 0) {
             sections.push({ title, items })
+          }
+        }
+
+        // Fetch charts for more content
+        try {
+          const chartsData = await invoke<any>('yt_browse', { browseId: 'FEmusic_charts' })
+          const chartsContents = chartsData.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents || []
+          
+          for (const section of chartsContents) {
+            const shelf = section.musicCarouselShelfRenderer
+            if (!shelf) continue
+
+            const title = shelf.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.[0]?.text
+            if (!title) continue
+            
+            // Skip video sections
+            if (this.shouldSkipSection(title)) continue
+            
+            // Skip if we already have this section
+            if (sections.some(s => s.title === title)) continue
+
+            const items = parseShelfItems(shelf.contents || [])
+
+            if (items.length > 0) {
+              sections.push({ title, items })
+            }
+          }
+        } catch {
+          // Charts fetch failed, continue with what we have
+        }
+
+        // Fetch explore/new releases for more content
+        try {
+          const exploreData = await invoke<any>('yt_browse', { browseId: 'FEmusic_explore' })
+          const exploreContents = exploreData.contents?.singleColumnBrowseResultsRenderer?.tabs?.[0]?.tabRenderer?.content?.sectionListRenderer?.contents || []
+          
+          for (const section of exploreContents) {
+            const shelf = section.musicCarouselShelfRenderer
+            if (!shelf) continue
+
+            const title = shelf.header?.musicCarouselShelfBasicHeaderRenderer?.title?.runs?.[0]?.text
+            if (!title) continue
+            
+            // Skip video sections
+            if (this.shouldSkipSection(title)) continue
+            
+            // Skip if we already have this section
+            if (sections.some(s => s.title === title)) continue
+
+            const items = parseShelfItems(shelf.contents || [])
+
+            if (items.length > 0) {
+              sections.push({ title, items })
+            }
+          }
+        } catch {
+          // Explore fetch failed, continue with what we have
+        }
+
+        // Generate additional sections by searching popular genres/moods
+        const genreSearches = [
+          { query: 'top hits 2024', title: 'Top Hits' },
+          { query: 'trending songs', title: 'Trending Now' },
+          { query: 'pop music hits', title: 'Pop Hits' },
+          { query: 'chill vibes music', title: 'Chill Vibes' },
+          { query: 'workout music', title: 'Workout' },
+          { query: 'party songs', title: 'Party Mix' },
+          { query: 'romantic songs', title: 'Romantic' },
+          { query: 'hip hop hits', title: 'Hip Hop' },
+          { query: 'rock classics', title: 'Rock Classics' },
+          { query: 'electronic dance music', title: 'Electronic' },
+          { query: 'lo-fi beats', title: 'Lo-Fi Beats' },
+          { query: 'acoustic covers', title: 'Acoustic' },
+        ]
+        
+        // Fetch a few genre sections in parallel (limit to avoid too many requests)
+        const genresToFetch = genreSearches.filter(g => !sections.some(s => s.title === g.title)).slice(0, 6)
+        
+        const genreResults = await Promise.allSettled(
+          genresToFetch.map(async ({ query, title }) => {
+            try {
+              const searchResult = await this.searchAll(query)
+              if (searchResult.songs.length > 0) {
+                return { title, items: searchResult.songs.slice(0, 15) }
+              }
+              return null
+            } catch {
+              return null
+            }
+          })
+        )
+        
+        for (const result of genreResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            sections.push(result.value)
           }
         }
 
@@ -985,8 +1190,8 @@ class YouTubeMusic {
         
         // Skip the first song (it's the current one) and return the rest
         return songs.slice(1)
-      } catch (error) {
-        console.error('Failed to get radio:', error)
+      } catch {
+        // Silently fail
       }
     }
     return []

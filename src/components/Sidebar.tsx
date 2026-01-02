@@ -22,6 +22,14 @@ export default function Sidebar() {
     { id: 'downloads' as const, icon: Download, label: 'Downloads', count: downloadedSongs.length, hasNotification: hasActiveDownloads },
   ]
 
+  const handleNavClick = (id: typeof navItems[number]['id']) => {
+    setView(id)
+  }
+
+  const handleLibraryClick = (id: typeof libraryItems[number]['id']) => {
+    setLibraryTab(id)
+  }
+
   return (
     <aside className={`flex flex-col border-r ios-transition relative
       ${sidebarCollapsed ? 'w-[72px]' : 'w-[220px]'}
@@ -44,7 +52,7 @@ export default function Sidebar() {
           sidebarCollapsed ? (
             <Tooltip key={id} text={label} position="right">
               <button
-                onClick={() => setView(id)}
+                onClick={() => handleNavClick(id)}
                 className={`flex items-center justify-center rounded-xl ios-transition ios-active w-12 h-12
                   ${currentView === id 
                     ? 'bg-ios-blue text-white' 
@@ -58,7 +66,7 @@ export default function Sidebar() {
           ) : (
             <button
               key={id}
-              onClick={() => setView(id)}
+              onClick={() => handleNavClick(id)}
               className={`w-full flex items-center gap-3 rounded-xl ios-transition ios-active px-3 py-2.5
                 ${currentView === id 
                   ? 'bg-ios-blue text-white' 
@@ -87,7 +95,7 @@ export default function Sidebar() {
           sidebarCollapsed ? (
             <Tooltip key={id} text={`${label}${count > 0 ? ` (${count})` : ''}${hasNotification ? ' • Downloading' : ''}`} position="right">
               <button
-                onClick={() => setLibraryTab(id)}
+                onClick={() => handleLibraryClick(id)}
                 className={`relative flex items-center justify-center rounded-xl ios-transition ios-active w-12 h-12
                   ${darkMode ? 'text-white hover:bg-white/10' : 'text-black hover:bg-black/5'}`}
               >
@@ -100,7 +108,7 @@ export default function Sidebar() {
           ) : (
             <button
               key={id}
-              onClick={() => setLibraryTab(id)}
+              onClick={() => handleLibraryClick(id)}
               className={`w-full flex items-center gap-3 rounded-xl ios-transition ios-active px-3 py-2.5
                 ${darkMode ? 'text-white hover:bg-white/10' : 'text-black hover:bg-black/5'}`}
             >

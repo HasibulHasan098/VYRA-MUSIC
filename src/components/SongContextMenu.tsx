@@ -109,7 +109,9 @@ export default function SongContextMenu({ track, x, y, onClose, playlistId }: So
       >
         <div className={`px-fib-13 py-fib-13 border-b ${darkMode ? 'border-white/10' : 'border-black/10'}`}>
           <div className="flex items-center gap-fib-8">
-            <img src={track.thumbnail} alt="" className="w-fib-34 h-fib-34 rounded-fib-5 object-cover" />
+            <div className="w-fib-34 h-fib-34 rounded-fib-5 overflow-hidden flex-shrink-0">
+              <img src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} alt="" className="w-full h-full object-cover scale-[1.35]" />
+            </div>
             <div className="flex-1 min-w-0">
               <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>{track.title}</p>
               <p className="text-fib-8 text-ios-gray truncate">{track.artists.map(a => a.name).join(', ')}</p>

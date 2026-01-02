@@ -11,8 +11,10 @@ use warp::Filter;
 use std::convert::Infallible;
 use std::time::{SystemTime, UNIX_EPOCH};
 use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, PlatformConfig};
+use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 
 const INNERTUBE_API_KEY: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
+const DISCORD_CLIENT_ID: &str = "1456592368005283893"; // You'll need to create a Discord app and get this ID
 
 struct AppState {
     client: Client,
@@ -23,6 +25,21 @@ struct AppState {
 
 // Global media controls - must be kept alive for the duration of the app
 static MEDIA_CONTROLS: std::sync::OnceLock<Arc<Mutex<MediaControls>>> = std::sync::OnceLock::new();
+
+// Global Discord RPC client
+static DISCORD_CLIENT: std::sync::OnceLock<Arc<Mutex<Option<DiscordIpcClient>>>> = std::sync::OnceLock::new();
+
+fn init_discord_rpc() -> Option<DiscordIpcClient> {
+    match DiscordIpcClient::new(DISCORD_CLIENT_ID) {
+        Ok(mut client) => {
+            match client.connect() {
+                Ok(_) => Some(client),
+                Err(_) => None
+            }
+        }
+        Err(_) => None
+    }
+}
 
 fn init_media_controls(app_handle: tauri::AppHandle) -> Option<Arc<Mutex<MediaControls>>> {
     #[cfg(not(target_os = "windows"))]
@@ -256,12 +273,23 @@ async fn yt_next(
     let visitor_data = state.visitor_data.lock().unwrap().clone();
     let context = create_context(visitor_data.as_deref(), "WEB_REMIX", "1.20231204.01.00");
 
+    // Request the radio playlist (RDAMVM prefix) to get related songs
+    let playlist_id = format!("RDAMVM{}", video_id);
+    
     let body = json!({
         "context": context,
         "videoId": video_id,
+        "playlistId": playlist_id,
         "isAudioOnly": true,
         "enablePersistentPlaylistPanel": true,
-        "tunerSettingValue": "AUTOMIX_SETTING_NORMAL"
+        "tunerSettingValue": "AUTOMIX_SETTING_NORMAL",
+        "watchEndpointMusicSupportedConfigs": {
+            "watchEndpointMusicConfig": {
+                "hasPersistentPlaylistPanel": true,
+                "musicVideoType": "MUSIC_VIDEO_TYPE_ATV"
+            }
+        },
+        "params": "wAEB"
     });
 
     let response = state
@@ -827,6 +855,95 @@ fn update_media_playback(is_playing: bool) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn update_discord_presence(
+    title: String,
+    artist: String,
+    _album: Option<String>,
+    duration_secs: Option<i64>,
+    elapsed_secs: Option<i64>,
+    is_playing: bool,
+    thumbnail: Option<String>,
+) -> Result<(), String> {
+    if let Some(client_arc) = DISCORD_CLIENT.get() {
+        if let Ok(mut client_opt) = client_arc.lock() {
+            // Try to reconnect if not connected
+            if client_opt.is_none() {
+                *client_opt = init_discord_rpc();
+            }
+            
+            if let Some(client) = client_opt.as_mut() {
+                // Calculate timestamps for progress bar
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as i64;
+                
+                // Build activity - Spotify-like format
+                // Details = Song title (with Paused if paused)
+                // State = Artist name
+                let details_text = if is_playing {
+                    title.clone()
+                } else {
+                    format!("{} (Paused)", title)
+                };
+                
+                let mut act = activity::Activity::new()
+                    .activity_type(activity::ActivityType::Listening)
+                    .details(&details_text)
+                    .state(&artist);
+                
+                // Always add timestamps for progress bar
+                let start_time = if let Some(elapsed) = elapsed_secs {
+                    now - elapsed
+                } else {
+                    now
+                };
+                
+                let timestamps = if let (Some(dur), Some(_)) = (duration_secs, elapsed_secs) {
+                    activity::Timestamps::new()
+                        .start(start_time)
+                        .end(start_time + dur)
+                } else {
+                    activity::Timestamps::new()
+                        .start(start_time)
+                };
+                act = act.timestamps(timestamps);
+                
+                // Add album art as large image, VYRA logo as small
+                let large_image = thumbnail.as_deref().unwrap_or("vyra_logo");
+                let assets = activity::Assets::new()
+                    .large_image(large_image)
+                    .large_text("VYRA Music")
+                    .small_image("vyra_logo")
+                    .small_text("VYRA");
+                act = act.assets(assets);
+                
+                // Add buttons - Download VYRA (Discord only supports HTTPS URLs)
+                let buttons = vec![
+                    activity::Button::new("Download VYRA", "https://github.com/HasibulHasan098/VYRA-MUSIC/releases"),
+                ];
+                act = act.buttons(buttons);
+                
+                let _ = client.set_activity(act);
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn clear_discord_presence() -> Result<(), String> {
+    if let Some(client_arc) = DISCORD_CLIENT.get() {
+        if let Ok(mut client_opt) = client_arc.lock() {
+            if let Some(client) = client_opt.as_mut() {
+                let _ = client.clear_activity();
+            }
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 async fn download_and_install_update(
     state: State<'_, AppState>,
     url: String,
@@ -1112,6 +1229,10 @@ fn main() {
                 let _ = MEDIA_CONTROLS.set(controls);
             }
             
+            // Initialize Discord RPC
+            let discord_client = init_discord_rpc();
+            let _ = DISCORD_CLIENT.set(Arc::new(Mutex::new(discord_client)));
+            
             // Create system tray with media controls
             let prev = MenuItem::with_id(app, "prev", "⏮ Previous", true, None::<&str>)?;
             let play_pause = MenuItem::with_id(app, "play_pause", "⏯ Play/Pause", true, None::<&str>)?;
@@ -1187,6 +1308,8 @@ fn main() {
             open_url,
             update_media_metadata,
             update_media_playback,
+            update_discord_presence,
+            clear_discord_presence,
             download_and_install_update
         ])
         .run(tauri::generate_context!())

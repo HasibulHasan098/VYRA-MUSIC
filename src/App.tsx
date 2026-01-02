@@ -15,9 +15,10 @@ import ArtistView from './views/ArtistView'
 import PlaylistView from './views/PlaylistView'
 import MiniPlayer from './components/MiniPlayer'
 import FullscreenPlayer from './components/FullscreenPlayer'
+import LyricsPanel from './components/LyricsPanel'
 
 export default function App() {
-  const { currentView, darkMode, searchQuery } = useAppStore()
+  const { currentView, darkMode, searchQuery, showLyrics, toggleLyrics } = useAppStore()
   const { currentTrack, restorePlayback, savePosition, initAudio, togglePlay, nextTrack, prevTrack } = usePlayerStore()
   const [isFullscreen, setIsFullscreen] = useState(false)
 
@@ -59,11 +60,23 @@ export default function App() {
             case 'prev':
               prevTrack()
               break
+            case 'play':
             case 'play_pause':
+              togglePlay()
+              break
+            case 'pause':
               togglePlay()
               break
             case 'next':
               nextTrack()
+              break
+            case 'stop':
+              // Stop playback
+              const audio = usePlayerStore.getState().audioElement
+              if (audio) {
+                audio.pause()
+                audio.currentTime = 0
+              }
               break
           }
         })
@@ -114,15 +127,21 @@ export default function App() {
       <TitleBar />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className={`flex-1 overflow-hidden relative ${darkMode ? 'bg-ios-bg-dark' : 'bg-ios-bg'}`}>
-          <div className={`h-full overflow-y-auto p-fib-21 ${showSearchResults ? 'hidden' : ''}`}>
-            {renderView()}
-          </div>
-          {showSearchResults && <SearchResults />}
+        <main className={`flex-1 overflow-hidden relative flex flex-col ${darkMode ? 'bg-ios-bg-dark' : 'bg-ios-bg'}`}>
+          {showLyrics ? (
+            <LyricsPanel />
+          ) : (
+            <>
+              <div className={`h-full overflow-y-auto p-fib-21 ${showSearchResults ? 'hidden' : ''}`}>
+                {renderView()}
+              </div>
+              {showSearchResults && <SearchResults />}
+            </>
+          )}
         </main>
         {showNowPlaying && <NowPlayingSidebar />}
       </div>
-      <Player />
+      <Player showLyrics={showLyrics} onToggleLyrics={toggleLyrics} />
       {isFullscreen && <FullscreenPlayer onExit={() => setIsFullscreen(false)} />}
     </div>
   )

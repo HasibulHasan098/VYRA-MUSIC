@@ -1,10 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Heart, ListMusic, Loader2, AlertCircle, X, Music, PictureInPicture2, Maximize2 } from 'lucide-react'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Heart, ListMusic, Loader2, AlertCircle, X, Music, PictureInPicture2, Maximize2, Mic2 } from 'lucide-react'
 import { usePlayerStore } from '../store/playerStore'
 import { useAppStore } from '../store/appStore'
 import Tooltip from './Tooltip'
 
-export default function Player() {
+interface PlayerProps {
+  showLyrics?: boolean
+  onToggleLyrics?: () => void
+}
+
+export default function Player({ showLyrics = false, onToggleLyrics }: PlayerProps) {
   const { 
     currentTrack, isPlaying, volume, progress, duration, shuffle, repeat, isLoading, error,
     togglePlay, setVolume, seek, toggleShuffle, cycleRepeat, nextTrack, prevTrack, initAudio, clearError,
@@ -120,12 +125,14 @@ export default function Player() {
                 <Music size={21} className="text-ios-gray" />
               </div>
             ) : (
-              <img 
-                src={currentTrack.thumbnail} 
-                alt={currentTrack.title}
-                className="w-fib-55 h-fib-55 rounded-fib-8 object-cover shadow-ios flex-shrink-0"
-                onError={() => setImgError(true)}
-              />
+              <div className="w-fib-55 h-fib-55 rounded-fib-8 overflow-hidden shadow-ios flex-shrink-0">
+                <img 
+                  src={`https://img.youtube.com/vi/${currentTrack.id}/hqdefault.jpg`} 
+                  alt={currentTrack.title}
+                  className="w-full h-full object-cover scale-[1.35]"
+                  onError={() => setImgError(true)}
+                />
+              </div>
             )}
             <div className="flex-1 min-w-0">
               <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
@@ -255,6 +262,14 @@ export default function Player() {
             <ListMusic size={18} />
           </button>
         </Tooltip>
+        <Tooltip text="Lyrics">
+          <button 
+            onClick={onToggleLyrics}
+            className={`p-fib-5 ios-active ios-transition ${showLyrics ? 'text-ios-blue' : darkMode ? 'text-ios-gray hover:text-white' : 'text-ios-gray hover:text-black'}`}
+          >
+            <Mic2 size={18} />
+          </button>
+        </Tooltip>
         <Tooltip text={volume === 0 ? 'Unmute' : 'Mute'}>
           <button 
             onClick={() => setVolume(volume > 0 ? 0 : 0.8)}
@@ -302,9 +317,11 @@ export default function Player() {
                 new WebviewWindow('miniplayer', {
                   url: '/#miniplayer',
                   title: 'Mini Player',
-                  width: 280,
-                  height: 420,
-                  resizable: false,
+                  width: 320,
+                  height: 500,
+                  minWidth: 280,
+                  minHeight: 400,
+                  resizable: true,
                   decorations: false,
                   alwaysOnTop: true,
                   transparent: false,

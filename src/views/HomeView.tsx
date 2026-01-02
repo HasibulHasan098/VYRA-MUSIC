@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Loader2, RefreshCw, ChevronLeft, ChevronRight, Play, Music, Sparkles, MoreHorizontal } from 'lucide-react'
+import { Loader2, RefreshCw, ChevronLeft, ChevronRight, Play, Music, MoreHorizontal, ListMusic } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore, Song } from '../store/playerStore'
-import { AlbumItem } from '../api/youtube'
+import { AlbumItem, PlaylistItem, ArtistItem } from '../api/youtube'
 import Tooltip from '../components/Tooltip'
 import SongContextMenu from '../components/SongContextMenu'
 
 export default function HomeView() {
-  const { darkMode, homeSections, isLoadingHome, fetchHome, recommendations, fetchRecommendations } = useAppStore()
+  const { darkMode, homeSections, isLoadingHome, fetchHome, recommendations, fetchRecommendations, openPlaylist, openArtist } = useAppStore()
   const { setQueue, likedSongs, recentlyPlayed } = usePlayerStore()
+  const [favoriteArtistSongs, setFavoriteArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
 
   useEffect(() => {
     if (homeSections.length === 0) {
@@ -24,8 +25,69 @@ export default function HomeView() {
     }
   }, [recentlyPlayed, recommendations.length, fetchRecommendations])
 
-  const isSong = (item: any): item is Song => 'artists' in item && 'id' in item && !('playlistId' in item)
-  const isAlbum = (item: any): item is AlbumItem => 'playlistId' in item || ('id' in item && item.id?.startsWith('MPREb'))
+  // Analyze listening history to find favorite artists and fetch their songs
+  const [hasFetchedFavorites, setHasFetchedFavorites] = useState(false)
+  
+  useEffect(() => {
+    const analyzeFavorites = async () => {
+      const allSongs = [...recentlyPlayed, ...likedSongs]
+      if (allSongs.length < 5 || hasFetchedFavorites) return // Need some history first, and only fetch once
+      
+      setHasFetchedFavorites(true)
+      
+      // Count artist occurrences
+      const artistCounts: Record<string, { name: string; count: number }> = {}
+      for (const song of allSongs) {
+        for (const artist of song.artists) {
+          if (artist.name && artist.name !== 'Unknown Artist') {
+            const key = artist.name.toLowerCase()
+            if (!artistCounts[key]) {
+              artistCounts[key] = { name: artist.name, count: 0 }
+            }
+            artistCounts[key].count++
+          }
+        }
+      }
+      
+      // Get top 2 favorite artists
+      const topArtists = Object.values(artistCounts)
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 2)
+      
+      if (topArtists.length === 0) return
+      
+      // Fetch songs for each favorite artist
+      const { youtube } = await import('../api/youtube')
+      const results: { artist: string; songs: Song[] }[] = []
+      
+      for (const artist of topArtists) {
+        try {
+          const searchResult = await youtube.searchAll(`${artist.name} popular songs`)
+          if (searchResult.songs.length > 0) {
+            // Filter out songs already in history
+            const existingIds = new Set(allSongs.map(s => s.id))
+            const newSongs = searchResult.songs.filter(s => !existingIds.has(s.id))
+            if (newSongs.length > 0) {
+              results.push({ artist: artist.name, songs: newSongs.slice(0, 12) })
+            }
+          }
+        } catch {
+          // Silently fail
+        }
+      }
+      
+      if (results.length > 0) {
+        setFavoriteArtistSongs(results) // Replace instead of append
+      }
+    }
+    
+    analyzeFavorites()
+  }, [recentlyPlayed.length, likedSongs.length, hasFetchedFavorites])
+
+  const isSong = (item: any): item is Song => 'artists' in item && 'id' in item && !('playlistId' in item) && !('subscribers' in item)
+  const isAlbum = (item: any): item is AlbumItem => 'playlistId' in item && 'artists' in item
+  const isPlaylist = (item: any): item is PlaylistItem => ('author' in item || 'songCount' in item) && !('artists' in item)
+  const isArtist = (item: any): item is ArtistItem => 'subscribers' in item || ('name' in item && !('artists' in item) && !('title' in item))
 
   // Get recent tracks from recently played history
   const recentTracks = recentlyPlayed.slice(0, 8)
@@ -43,7 +105,7 @@ export default function HomeView() {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-fib-13">
         <p className={`text-fib-21 font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
-          Welcome to Metrolist
+          Welcome to VYRA
         </p>
         <p className="text-fib-13 text-ios-gray text-center max-w-sm">
           Unable to load content. Check your connection.
@@ -73,7 +135,7 @@ export default function HomeView() {
         />
       ) : (
         // Show first section songs as quick picks if no recent
-        homeSections[0] && (
+        homeSections[0] && homeSections[0].items.filter(isSong).length > 0 && (
           <QuickPicksGrid 
             title="Quick picks" 
             tracks={homeSections[0].items.filter(isSong).slice(0, 8)} 
@@ -88,7 +150,6 @@ export default function HomeView() {
         <ScrollableSection 
           title="Recommended for you"
           darkMode={darkMode}
-          icon={<Sparkles size={18} className="text-ios-purple" />}
         >
           {recommendations.slice(0, 12).map((track, idx) => (
             <SongCard 
@@ -121,14 +182,68 @@ export default function HomeView() {
         </ScrollableSection>
       )}
 
-      {/* Dynamic sections from API */}
+      {/* More from favorite artists - based on listening history */}
+      {favoriteArtistSongs.map(({ artist, songs }) => (
+        <ScrollableSection 
+          key={`fav-${artist}`}
+          title={`More from ${artist}`}
+          darkMode={darkMode}
+        >
+          {songs.map((track, idx) => (
+            <SongCard 
+              key={`fav-${artist}-${track.id}`} 
+              track={track} 
+              allTracks={songs}
+              index={idx}
+              darkMode={darkMode}
+            />
+          ))}
+        </ScrollableSection>
+      ))}
+
+      {/* Dynamic sections from API - Show ALL sections */}
       {homeSections.map((section, sectionIndex) => {
         const songs = section.items.filter(isSong)
         const albums = section.items.filter(isAlbum)
+        const playlists = section.items.filter(isPlaylist)
+        const artists = section.items.filter(isArtist)
 
         // Skip first section if used as quick picks and no recent tracks
-        if (sectionIndex === 0 && recentTracks.length === 0) {
+        if (sectionIndex === 0 && recentTracks.length === 0 && songs.length > 0) {
           return null
+        }
+
+        // Every 3rd or 4th song section, show as compact grid instead of scrollable
+        const showAsGrid = songs.length >= 6 && (sectionIndex % 4 === 2 || sectionIndex % 5 === 3)
+
+        // Artists section
+        if (artists.length > 0) {
+          return (
+            <ScrollableSection 
+              key={`${section.title}-${sectionIndex}`} 
+              title={section.title}
+              darkMode={darkMode}
+            >
+              {artists.map((artist) => (
+                <ArtistCardItem key={artist.id} artist={artist} darkMode={darkMode} onOpen={openArtist} />
+              ))}
+            </ScrollableSection>
+          )
+        }
+
+        // Playlists section
+        if (playlists.length > 0) {
+          return (
+            <ScrollableSection 
+              key={`${section.title}-${sectionIndex}`} 
+              title={section.title}
+              darkMode={darkMode}
+            >
+              {playlists.map((playlist) => (
+                <PlaylistCardItem key={playlist.id} playlist={playlist} darkMode={darkMode} onOpen={openPlaylist} />
+              ))}
+            </ScrollableSection>
+          )
         }
 
         // Albums section
@@ -139,23 +254,33 @@ export default function HomeView() {
               title={section.title}
               darkMode={darkMode}
             >
-              {albums.slice(0, 12).map((album) => (
+              {albums.map((album) => (
                 <AlbumCardItem key={album.id} album={album} darkMode={darkMode} />
               ))}
             </ScrollableSection>
           )
         }
 
-        // Songs section
+        // Songs section - show as grid or scrollable based on position
         if (songs.length > 0) {
+          if (showAsGrid) {
+            return (
+              <QuickPicksGrid
+                key={`${section.title}-${sectionIndex}`}
+                title={section.title}
+                tracks={songs.slice(0, 8)}
+                darkMode={darkMode}
+                setQueue={setQueue}
+              />
+            )
+          }
           return (
             <ScrollableSection 
               key={`${section.title}-${sectionIndex}`} 
               title={section.title}
-              subtitle={`${songs.length} songs`}
               darkMode={darkMode}
             >
-              {songs.slice(0, 12).map((track, idx) => (
+              {songs.map((track, idx) => (
                 <SongCard 
                   key={track.id} 
                   track={track} 
@@ -168,13 +293,40 @@ export default function HomeView() {
           )
         }
 
+        // Mixed content - show all items
+        if (section.items.length > 0) {
+          return (
+            <ScrollableSection 
+              key={`${section.title}-${sectionIndex}`} 
+              title={section.title}
+              darkMode={darkMode}
+            >
+              {section.items.map((item: any, idx) => {
+                if (isSong(item)) {
+                  return <SongCard key={item.id} track={item} allTracks={songs} index={idx} darkMode={darkMode} />
+                }
+                if (isAlbum(item)) {
+                  return <AlbumCardItem key={item.id} album={item} darkMode={darkMode} />
+                }
+                if (isPlaylist(item)) {
+                  return <PlaylistCardItem key={item.id} playlist={item} darkMode={darkMode} onOpen={openPlaylist} />
+                }
+                if (isArtist(item)) {
+                  return <ArtistCardItem key={item.id} artist={item} darkMode={darkMode} onOpen={openArtist} />
+                }
+                return null
+              })}
+            </ScrollableSection>
+          )
+        }
+
         return null
       })}
     </div>
   )
 }
 
-// Quick Picks Grid - Compact horizontal list like YouTube Music
+// Quick Picks Grid - Compact horizontal list like YouTube Music/Spotify
 function QuickPicksGrid({ 
   title, 
   tracks, 
@@ -192,36 +344,41 @@ function QuickPicksGrid({
     setQueue(tracks, index)
   }
 
+  // Show up to 8 tracks in 2 rows
+  const displayTracks = tracks.slice(0, 8)
+
   return (
     <section>
       <h2 className={`text-fib-21 font-bold mb-fib-13 ${darkMode ? 'text-white' : 'text-black'}`}>
         {title}
       </h2>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-fib-8">
-        {tracks.map((track, idx) => (
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {displayTracks.map((track, idx) => (
           <div
             key={`quick-${track.id}-${idx}`}
             onClick={() => handlePlay(idx)}
-            className={`flex items-center gap-fib-8 p-fib-5 rounded-fib-8 cursor-pointer ios-active group
-              ${darkMode ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
+            className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
+              ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}
           >
             {imgErrors.has(track.id) ? (
-              <div className="w-[48px] h-[48px] rounded-fib-5 bg-gradient-to-br from-ios-purple to-ios-blue flex items-center justify-center flex-shrink-0">
+              <div className="w-12 h-12 bg-gradient-to-br from-ios-purple to-ios-blue flex items-center justify-center flex-shrink-0">
                 <Music size={20} className="text-white/80" />
               </div>
             ) : (
-              <img 
-                src={track.thumbnail} 
-                alt=""
-                className="w-[48px] h-[48px] rounded-fib-5 object-cover flex-shrink-0"
-                onError={() => setImgErrors(prev => new Set(prev).add(track.id))}
-              />
+              <div className="w-12 h-12 flex-shrink-0 overflow-hidden">
+                <img 
+                  src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                  alt=""
+                  className="w-full h-full object-cover scale-[1.35]"
+                  onError={() => setImgErrors(prev => new Set(prev).add(track.id))}
+                />
+              </div>
             )}
-            <div className="flex-1 min-w-0">
-              <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+            <div className="flex-1 min-w-0 py-2">
+              <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
                 {track.title}
               </p>
-              <p className="text-fib-8 text-ios-gray truncate">
+              <p className="text-xs text-ios-gray truncate">
                 {track.artists.map(a => a.name).join(', ')}
               </p>
             </div>
@@ -358,16 +515,16 @@ function SongCard({
         onContextMenu={handleContextMenu}
         className="flex-shrink-0 w-[160px] cursor-pointer group"
       >
-        <div className="relative mb-fib-8">
+        <div className="relative mb-fib-8 bg-black/20 rounded-fib-8 overflow-hidden">
           {imgError ? (
-            <div className="w-full aspect-square rounded-fib-8 bg-gradient-to-br from-ios-purple to-ios-blue flex items-center justify-center">
+            <div className="w-full aspect-square bg-gradient-to-br from-ios-purple to-ios-blue flex items-center justify-center">
               <Music size={34} className="text-white/80" />
             </div>
           ) : (
             <img 
-              src={track.thumbnail} 
+              src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
               alt=""
-              className={`w-full aspect-square rounded-fib-8 object-cover ${isActive ? 'ring-2 ring-ios-blue' : ''}`}
+              className={`w-full aspect-square object-cover scale-[1.35] ${isActive ? 'ring-2 ring-ios-blue ring-inset' : ''}`}
               onError={() => setImgError(true)}
             />
           )}
@@ -379,7 +536,7 @@ function SongCard({
             <MoreHorizontal size={16} className="text-white" />
           </button>
           {/* Play overlay */}
-          <div className={`absolute inset-0 rounded-fib-8 bg-black/40 flex items-center justify-center ios-transition
+          <div className={`absolute inset-0 bg-black/40 flex items-center justify-center ios-transition
             ${isActive && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
             <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
               {isActive && isPlaying ? (
@@ -450,6 +607,84 @@ function AlbumCardItem({ album, darkMode }: { album: AlbumItem; darkMode: boolea
       </p>
       <p className="text-fib-13 text-ios-gray truncate">
         {album.artists?.map(a => a.name).join(', ') || (album.year ? `Album • ${album.year}` : 'Album')}
+      </p>
+    </div>
+  )
+}
+
+// Playlist Card for horizontal scroll
+function PlaylistCardItem({ playlist, darkMode, onOpen }: { playlist: PlaylistItem; darkMode: boolean; onOpen: (id: string) => void }) {
+  const [imgError, setImgError] = useState(false)
+
+  return (
+    <div 
+      onClick={() => onOpen(playlist.id)}
+      className="flex-shrink-0 w-[160px] cursor-pointer group"
+    >
+      <div className="relative mb-fib-8">
+        {imgError ? (
+          <div className="w-full aspect-square rounded-fib-8 bg-gradient-to-br from-ios-blue to-ios-purple flex items-center justify-center">
+            <ListMusic size={34} className="text-white/80" />
+          </div>
+        ) : (
+          <img 
+            src={playlist.thumbnail} 
+            alt=""
+            className="w-full aspect-square rounded-fib-8 object-cover"
+            onError={() => setImgError(true)}
+          />
+        )}
+        {/* Play overlay */}
+        <div className="absolute inset-0 rounded-fib-8 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 ios-transition">
+          <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+            <Play size={24} fill="black" className="text-black ml-1" />
+          </div>
+        </div>
+      </div>
+      <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+        {playlist.title}
+      </p>
+      <p className="text-fib-13 text-ios-gray truncate">
+        {playlist.author?.name || playlist.songCount || 'Playlist'}
+      </p>
+    </div>
+  )
+}
+
+// Artist Card for horizontal scroll
+function ArtistCardItem({ artist, darkMode, onOpen }: { artist: ArtistItem; darkMode: boolean; onOpen: (id: string) => void }) {
+  const [imgError, setImgError] = useState(false)
+
+  return (
+    <div 
+      onClick={() => onOpen(artist.id)}
+      className="flex-shrink-0 w-[160px] cursor-pointer group"
+    >
+      <div className="relative mb-fib-8">
+        {imgError ? (
+          <div className="w-full aspect-square rounded-full bg-gradient-to-br from-ios-green to-ios-teal flex items-center justify-center">
+            <Music size={34} className="text-white/80" />
+          </div>
+        ) : (
+          <img 
+            src={artist.thumbnail} 
+            alt=""
+            className="w-full aspect-square rounded-full object-cover"
+            onError={() => setImgError(true)}
+          />
+        )}
+        {/* Play overlay */}
+        <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 ios-transition">
+          <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
+            <Play size={24} fill="black" className="text-black ml-1" />
+          </div>
+        </div>
+      </div>
+      <p className={`text-fib-13 font-medium truncate text-center ${darkMode ? 'text-white' : 'text-black'}`}>
+        {artist.name}
+      </p>
+      <p className="text-fib-13 text-ios-gray truncate text-center">
+        {artist.subscribers || 'Artist'}
       </p>
     </div>
   )

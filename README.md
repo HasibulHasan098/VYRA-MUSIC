@@ -34,14 +34,43 @@
 - 📁 **Playlists** — Create custom playlists
 - 🖥️ **System Tray** — Minimize to tray with media controls
 - 🔒 **Single Instance** — Only one app window at a time
+- 🎤 **Synced Lyrics** — Real-time lyrics with karaoke-style animation
+- 🖼️ **Fullscreen Mode** — Immersive fullscreen player with lyrics view
+- � **Auto-queue** — Automatically fetches related songs when queue ends
+- 🔔 **Auto-Updates** — Check for updates and install with one click
 
+## 🆕 What's New in v1.0.2
+
+### Improved Queue System
+- **Infinite Queue** — Queue now automatically extends with 50 related songs when running low
+- **Smart Queue Extension** — Fetches new songs when fewer than 6 tracks remain
+- **No More Empty Queue** — Even rapid clicking through songs keeps the queue full
+
+### Settings Reorganization
+- **Organized Settings** — Settings page reorganized into logical sections: Appearance, Playback, Storage, Behavior, Account, About
+- **Equalizer in Playback** — EQ settings moved under Playback section for better organization
+
+### Equalizer Presets
+- **20 EQ Presets** — Added all Spotify-style presets: Flat, Acoustic, Bass Booster, Classical, Dance, Deep, Electronic, Hip-Hop, Jazz, Latin, Loudness, Lounge, Piano, Pop, R&B, Rock, Small Speakers, Spoken Word, Treble Booster, and more
+
+### Enhanced Home Page
+- **More Content** — Home page now fetches from multiple YouTube Music endpoints
+- **Genre Sections** — Added genre-based sections like Pop Hits, Chill Vibes, Workout, etc.
+- **No Videos** — Filtered out video sections to show only music content
+
+### Thumbnail Quality Fix
+- **High Quality Thumbnails** — Fixed black borders on YouTube thumbnails
+- **Proper Cropping** — Thumbnails now properly cropped without quality loss
+
+### Autoplay Control
+- **Autoplay Toggle** — Autoplay setting now properly stops playback when disabled
 
 ## 🚀 Installation
 
 ### Windows
 
 1. Download the latest installer from [Releases](https://github.com/HasibulHasan098/VYRA-MUSIC/releases)
-2. Run `VYRA_x.x.x_x64-setup.exe`
+2. Run `VYRA_1.0.2_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -77,7 +106,7 @@ npm run tauri:build
 ```
 vyra/
 ├── src/                    # React frontend
-│   ├── api/               # YouTube API integration
+│   ├── api/               # YouTube API, Lyrics, Updater
 │   ├── components/        # UI components
 │   ├── store/             # Zustand stores
 │   └── views/             # Page views
@@ -96,6 +125,15 @@ Settings are available in the app:
 - **Download Quality** — Normal (128kbps), High (256kbps), Very High (320kbps)
 - **Close to Tray** — Minimize to system tray on close
 - **Cache Music** — Cache songs for faster playback
+- **Check for Updates** — Manually check for new versions
+
+## 🎤 Lyrics
+
+VYRA uses [LRCLIB](https://lrclib.net/) for synchronized lyrics:
+- Click the microphone icon in the player to toggle lyrics
+- Lyrics automatically sync with playback
+- Click any line to seek to that position
+- Works in both normal and fullscreen modes
 
 ## 🤝 Contributing
 

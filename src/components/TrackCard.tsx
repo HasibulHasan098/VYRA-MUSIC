@@ -87,9 +87,9 @@ export default function TrackCard({ track, showArtist = true, allTracks, index =
                 </div>
               )}
               <img 
-                src={track.thumbnail} 
+                src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
                 alt=""
-                className={`w-full h-full object-cover ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
+                className={`w-full h-full object-cover scale-[1.35] ${imgLoaded ? 'opacity-100' : 'opacity-0'}`}
                 loading="lazy"
                 onError={() => setImgError(true)}
                 onLoad={() => setImgLoaded(true)}

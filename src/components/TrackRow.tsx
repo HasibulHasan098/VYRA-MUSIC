@@ -86,13 +86,15 @@ export default function TrackRow({ track, index, allTracks, showIndex = true, sh
             <Music size={16} className="text-ios-gray" />
           </div>
         ) : (
-          <img 
-            src={track.thumbnail} 
-            alt={track.title}
-            className="w-fib-34 h-fib-34 rounded-fib-5 object-cover flex-shrink-0"
-            loading="lazy"
-            onError={() => setImgError(true)}
-          />
+          <div className="w-fib-34 h-fib-34 rounded-fib-5 overflow-hidden flex-shrink-0">
+            <img 
+              src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+              alt={track.title}
+              className="w-full h-full object-cover scale-[1.35]"
+              loading="lazy"
+              onError={() => setImgError(true)}
+            />
+          </div>
         )}
 
         {/* Info */}
