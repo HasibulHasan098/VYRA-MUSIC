@@ -63,43 +63,76 @@ Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\{#MyAppName}"; Fil
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [Code]
-function GetUninstallString(AppId: String): String;
+function FindAndUninstallTauri(): Boolean;
 var
   UninstallKey: String;
-  UninstallString: String;
-begin
-  Result := '';
-  // Check current user first
-  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\' + AppId + '_is1';
-  if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
-    Result := UninstallString
-  else if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', UninstallString) then
-    Result := UninstallString;
-end;
-
-function UninstallOldVersion(AppId: String): Boolean;
-var
   UninstallString: String;
   ResultCode: Integer;
 begin
   Result := True;
-  UninstallString := GetUninstallString(AppId);
-  if UninstallString <> '' then
+  
+  // Tauri NSIS uses the app name directly as registry key
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\VYRA';
+  
+  // Check HKCU first (current user install)
+  if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
   begin
-    // Remove quotes if present
-    if Copy(UninstallString, 1, 1) = '"' then
-      UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
-    // Run uninstaller silently
-    Result := Exec(UninstallString, '/SILENT /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    if UninstallString <> '' then
+    begin
+      // Remove quotes if present
+      if Copy(UninstallString, 1, 1) = '"' then
+        UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
+      Exec(UninstallString, '/SILENT', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end
+  // Check HKLM (all users install)
+  else if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', UninstallString) then
+  begin
+    if UninstallString <> '' then
+    begin
+      if Copy(UninstallString, 1, 1) = '"' then
+        UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
+      Exec(UninstallString, '/SILENT', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end;
+end;
+
+function FindAndUninstallInno(): Boolean;
+var
+  UninstallKey: String;
+  UninstallString: String;
+  ResultCode: Integer;
+begin
+  Result := True;
+  
+  // Inno Setup uses AppId + _is1
+  UninstallKey := 'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}_is1';
+  
+  if RegQueryStringValue(HKCU, UninstallKey, 'UninstallString', UninstallString) then
+  begin
+    if UninstallString <> '' then
+    begin
+      if Copy(UninstallString, 1, 1) = '"' then
+        UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
+      Exec(UninstallString, '/SILENT /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
+  end
+  else if RegQueryStringValue(HKLM, UninstallKey, 'UninstallString', UninstallString) then
+  begin
+    if UninstallString <> '' then
+    begin
+      if Copy(UninstallString, 1, 1) = '"' then
+        UninstallString := Copy(UninstallString, 2, Length(UninstallString) - 2);
+      Exec(UninstallString, '/SILENT /NORESTART', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+    end;
   end;
 end;
 
 function InitializeSetup(): Boolean;
 begin
   Result := True;
-  // Uninstall old Inno Setup version (same AppId)
-  UninstallOldVersion('{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}');
-  // Also try to uninstall Tauri/NSIS version if exists
-  UninstallOldVersion('VYRA');
-  UninstallOldVersion('com.vyra.desktop');
+  // Uninstall old Tauri/NSIS version
+  FindAndUninstallTauri();
+  // Uninstall old Inno Setup version
+  FindAndUninstallInno();
 end;
