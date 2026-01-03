@@ -1,4 +1,4 @@
-import { Loader2, Play, Shuffle, ArrowLeft, Music } from 'lucide-react'
+import { Loader2, Play, Shuffle, ArrowLeft, Music, UserPlus, UserCheck } from 'lucide-react'
 import { useState } from 'react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore } from '../store/playerStore'
@@ -83,8 +83,24 @@ function ArtistAlbumCard({ album, onClick }: { album: AlbumItem; onClick: () => 
 }
 
 export default function ArtistView() {
-  const { darkMode, currentArtist, isLoadingArtist, setView, openAlbum, goBack } = useAppStore()
+  const { darkMode, currentArtist, isLoadingArtist, setView, openAlbum, goBack, followArtist, unfollowArtist, isFollowing } = useAppStore()
   const { setQueue } = usePlayerStore()
+
+  const isFollowed = currentArtist ? isFollowing(currentArtist.id) : false
+
+  const handleFollowToggle = () => {
+    if (!currentArtist) return
+    if (isFollowed) {
+      unfollowArtist(currentArtist.id)
+    } else {
+      followArtist({
+        id: currentArtist.id,
+        name: currentArtist.name,
+        thumbnail: currentArtist.thumbnail,
+        subscribers: currentArtist.subscribers
+      })
+    }
+  }
 
   if (isLoadingArtist) {
     return (
@@ -190,6 +206,18 @@ export default function ArtistView() {
           >
             <Shuffle size={18} />
             Shuffle
+          </button>
+        </Tooltip>
+        <Tooltip text={isFollowed ? 'Unfollow artist' : 'Follow artist'}>
+          <button
+            onClick={handleFollowToggle}
+            className={`flex items-center gap-fib-8 px-fib-21 py-fib-13 rounded-fib-34 text-fib-13 font-medium ios-active
+              ${isFollowed 
+                ? 'bg-ios-green text-white' 
+                : darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+          >
+            {isFollowed ? <UserCheck size={18} /> : <UserPlus size={18} />}
+            {isFollowed ? 'Following' : 'Follow'}
           </button>
         </Tooltip>
       </div>

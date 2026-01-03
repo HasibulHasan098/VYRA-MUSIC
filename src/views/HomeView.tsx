@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, RefreshCw, ChevronLeft, ChevronRight, Play, Music, MoreHorizontal, ListMusic } from 'lucide-react'
+import { Loader2, RefreshCw, ChevronLeft, ChevronRight, Play, Music, MoreHorizontal, ListMusic, WifiOff, Download } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore, Song } from '../store/playerStore'
 import { AlbumItem, PlaylistItem, ArtistItem } from '../api/youtube'
@@ -7,9 +7,25 @@ import Tooltip from '../components/Tooltip'
 import SongContextMenu from '../components/SongContextMenu'
 
 export default function HomeView() {
-  const { darkMode, homeSections, isLoadingHome, fetchHome, recommendations, fetchRecommendations, openPlaylist, openArtist } = useAppStore()
+  const { darkMode, homeSections, isLoadingHome, fetchHome, recommendations, fetchRecommendations, openPlaylist, openArtist, cachedSongs, followedArtists } = useAppStore()
   const { setQueue, likedSongs, recentlyPlayed } = usePlayerStore()
   const [favoriteArtistSongs, setFavoriteArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
+  const [followedArtistSongs, setFollowedArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
+  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+
+  // Listen for online/offline events
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false)
+    const handleOffline = () => setIsOffline(true)
+    
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   useEffect(() => {
     if (homeSections.length === 0) {
@@ -24,6 +40,35 @@ export default function HomeView() {
       fetchRecommendations(videoIds)
     }
   }, [recentlyPlayed, recommendations.length, fetchRecommendations])
+
+  // Fetch songs from followed artists
+  useEffect(() => {
+    const fetchFollowedArtistSongs = async () => {
+      if (followedArtists.length === 0) {
+        setFollowedArtistSongs([])
+        return
+      }
+      
+      const { youtube } = await import('../api/youtube')
+      const results: { artist: string; songs: Song[] }[] = []
+      
+      // Fetch songs for up to 3 followed artists
+      for (const artist of followedArtists.slice(0, 3)) {
+        try {
+          const searchResult = await youtube.searchAll(`${artist.name} songs`)
+          if (searchResult.songs.length > 0) {
+            results.push({ artist: artist.name, songs: searchResult.songs.slice(0, 12) })
+          }
+        } catch {
+          // Silently fail
+        }
+      }
+      
+      setFollowedArtistSongs(results)
+    }
+    
+    fetchFollowedArtistSongs()
+  }, [followedArtists])
 
   // Analyze listening history to find favorite artists and fetch their songs
   const [hasFetchedFavorites, setHasFetchedFavorites] = useState(false)
@@ -91,6 +136,106 @@ export default function HomeView() {
 
   // Get recent tracks from recently played history
   const recentTracks = recentlyPlayed.slice(0, 8)
+
+  // Show offline mode with cached songs
+  if (isOffline) {
+    return (
+      <div className="space-y-fib-34">
+        {/* Offline banner */}
+        <div className={`flex items-center gap-3 p-4 rounded-xl ${darkMode ? 'bg-orange-500/20' : 'bg-orange-100'}`}>
+          <WifiOff size={24} className="text-orange-500" />
+          <div>
+            <p className={`font-medium ${darkMode ? 'text-white' : 'text-black'}`}>You're offline</p>
+            <p className="text-sm text-ios-gray">Playing cached songs only</p>
+          </div>
+        </div>
+
+        {/* Cached songs section */}
+        {cachedSongs.length > 0 ? (
+          <section>
+            <div className="flex items-center gap-2 mb-fib-13">
+              <Download size={20} className="text-ios-blue" />
+              <h2 className={`text-fib-21 font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                Available offline ({cachedSongs.length})
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {cachedSongs.map((track, idx) => (
+                <div
+                  key={`cached-${track.id}-${idx}`}
+                  onClick={() => setQueue(cachedSongs, idx)}
+                  className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
+                    ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}
+                >
+                  <div className="w-12 h-12 flex-shrink-0 overflow-hidden">
+                    <img 
+                      src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                      alt=""
+                      className="w-full h-full object-cover scale-[1.35]"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 py-2">
+                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                      {track.title}
+                    </p>
+                    <p className="text-xs text-ios-gray truncate">
+                      {track.artists.map(a => a.name).join(', ')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <Download size={48} className="text-ios-gray" />
+            <p className={`text-lg font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
+              No cached songs
+            </p>
+            <p className="text-ios-gray text-center max-w-sm">
+              Songs are cached automatically after you finish playing them. Go online and listen to some music!
+            </p>
+          </div>
+        )}
+
+        {/* Show liked songs that might be cached */}
+        {likedSongs.length > 0 && (
+          <section>
+            <h2 className={`text-fib-21 font-bold mb-fib-13 ${darkMode ? 'text-white' : 'text-black'}`}>
+              Your liked songs
+            </h2>
+            <p className="text-sm text-ios-gray mb-3">Some may not play offline</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {likedSongs.slice(0, 8).map((track, idx) => (
+                <div
+                  key={`liked-offline-${track.id}-${idx}`}
+                  onClick={() => setQueue(likedSongs, idx)}
+                  className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
+                    ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}
+                >
+                  <div className="w-12 h-12 flex-shrink-0 overflow-hidden">
+                    <img 
+                      src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                      alt=""
+                      className="w-full h-full object-cover scale-[1.35]"
+                    />
+                  </div>
+                  <div className="flex-1 min-w-0 py-2">
+                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                      {track.title}
+                    </p>
+                    <p className="text-xs text-ios-gray truncate">
+                      {track.artists.map(a => a.name).join(', ')}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+      </div>
+    )
+  }
 
   if (isLoadingHome) {
     return (
@@ -181,6 +326,26 @@ export default function HomeView() {
           ))}
         </ScrollableSection>
       )}
+
+      {/* Songs from followed artists */}
+      {followedArtistSongs.map(({ artist, songs }) => (
+        <ScrollableSection 
+          key={`followed-${artist}`}
+          title={`From ${artist}`}
+          subtitle="Following"
+          darkMode={darkMode}
+        >
+          {songs.map((track, idx) => (
+            <SongCard 
+              key={`followed-${artist}-${track.id}`} 
+              track={track} 
+              allTracks={songs}
+              index={idx}
+              darkMode={darkMode}
+            />
+          ))}
+        </ScrollableSection>
+      ))}
 
       {/* More from favorite artists - based on listening history */}
       {favoriteArtistSongs.map(({ artist, songs }) => (

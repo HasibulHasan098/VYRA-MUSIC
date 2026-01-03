@@ -32,42 +32,70 @@
 - 🔄 **Queue Management** — Create and manage your play queue
 - ❤️ **Liked Songs** — Save your favorite tracks
 - 📁 **Playlists** — Create custom playlists
+- � ***Follow Artists** — Follow artists and get recommendations
+- � ***Data Backup** — Export/Import your data with `.vyra` files
 - 🖥️ **System Tray** — Minimize to tray with media controls
-- 🔒 **Single Instance** — Only one app window at a time
+- �  **Single Instance** — Only one app window at a time
 - 🎤 **Synced Lyrics** — Real-time lyrics with karaoke-style animation
-- 🖼️ **Fullscreen Mode** — Immersive fullscreen player with lyrics view
-- � **Auto-queue** — Automatically fetches related songs when queue ends
+- �️* **Fullscreen Mode** — Immersive fullscreen player with lyrics view
+- 🎶 **Auto-queue** — Automatically fetches related songs when queue ends
+- 📴 **Offline Cache** — Cache songs for offline playback
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 
-## 🆕 What's New in v1.0.4
+## 🆕 What's New in v1.0.5
 
-### Customizable Keyboard Shortcuts
-- **In-App Keybinds** — Customize shortcuts for play/pause, next, previous, volume, mute, like, and lyrics
-- **Global Keybinds** — Control playback even when app is minimized (toggle in settings)
-- **2-Key Combos** — Support for modifier + key combinations (e.g., Ctrl+P)
-- **Live Recording** — See keys as you press them while setting shortcuts
-- **Unbind Support** — Press Backspace/Delete to remove a keybind
+### Follow Artists
+- **Follow Button** — Follow your favorite artists from their artist page
+- **Artists Library** — View all followed artists in the Library tab
+- **Sidebar Artists** — Quick access to followed artists in the sidebar (up to 3 shown)
+- **Artist Recommendations** — Get song recommendations from artists you follow on the home page
+- **Persistent Data** — Followed artists are saved locally
 
-### Security & Privacy
-- **Blocked Browser Shortcuts** — All default browser shortcuts (Ctrl+P, Ctrl+S, F12, etc.) are blocked
-- **Only User Keybinds Work** — Only shortcuts you set in settings will function
-- **No Dev Tools** — Developer tools access is disabled
+### Data Management
+- **Export Data** — Save your data to a `.vyra` backup file
+  - Choose what to export: History, Liked Songs, Artists, Downloads, Playlists
+  - Select save location with file picker dialog
+  - Select All option for quick selection
+- **Import Data** — Restore data from a `.vyra` backup file
+  - **Merge Mode** — Add imported data to existing data (duplicates ignored)
+  - **Fresh Start Mode** — Replace existing data with imported data
+  - Shows what data is available in the backup
+  - Select which data types to import
+- **Clear Data** — Selectively clear your data
+  - Choose what to clear: History, Liked Songs, Artists, Downloads, Playlists
+  - Confirmation popup with round checkboxes
+  - Select All option
 
-### Custom Installer
-- **Inno Setup Installer** — Professional Windows installer built with Inno Setup
-- **Custom Branding** — Installer features VYRA icon and branding
-- **One-Click Install** — Simple installation without license prompts
+### Improved Sidebar
+- **Song Thumbnails** — Library items (Liked Songs, Recently Played, Downloads) show stacked song thumbnails
+- **Artists Section** — Dedicated section for followed artists with divider
+- **Vertical Artist List** — Shows up to 3 artists vertically with proper images
+- **See All Button** — Quick access to full artists list in both collapsed and expanded modes
+- **Click to Open** — Clicking an artist opens their artist page directly
 
-### Bug Fixes
-- **Keybind Recording** — Fixed key combination recording not working properly
-- **Release Key Detection** — Combos now save when you release the main key (not all keys)
+### Music Caching
+- **Offline Playback** — Songs are cached after finishing playback
+- **Adjustable Cache Limit** — Set cache limit from 1 to 999 songs (default: 40)
+- **Cache Limit Slider** — Beautiful slider with draggable thumb appears when caching is enabled
+- **Offline Banner** — Shows cached songs section when offline
+- **Toggle in Settings** — Enable/disable caching in Storage settings
+
+### UI Improvements
+- **Cleaner Sidebar** — Removed song count from library items for cleaner look
+- **Better Spacing** — Improved spacing in collapsed and expanded sidebar modes
+- **Round Checkboxes** — Modern round checkbox design in data management modals
+
+### Installer & Bug Fixes
+- **Removed Inno Setup** — Switched to Tauri's built-in NSIS installer
+- **Auto-Uninstall Old Versions** — Automatically removes old Inno Setup installations when upgrading
+- **Fixed Freezing at Start** — Resolved app freezing issue on startup
 
 ## 🚀 Installation
 
 ### Windows
 
 1. Download the latest installer from [Releases](https://github.com/HasibulHasan098/VYRA-MUSIC/releases)
-2. Run `VYRA_1.0.4_Setup.exe`
+2. Run `VYRA_1.0.5_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -83,15 +111,9 @@ npm install
 # Run in development mode
 npm run tauri:dev
 
-# Build for production (creates exe in src-tauri/target/release/)
+# Build for production
+# Installer will be at: src-tauri/target/release/bundle/nsis/VYRA_x.x.x_x64-setup.exe
 npm run tauri:build
-
-# Build custom installer (requires Inno Setup)
-# Output: installer/output/VYRA_x.x.x_Setup.exe
-npm run installer:build
-
-# Full release build (tauri build + installer)
-npm run release
 ```
 
 ## 🛠️ Tech Stack
@@ -104,7 +126,6 @@ npm run release
 | [Tailwind CSS](https://tailwindcss.com/) | Styling |
 | [Zustand](https://zustand-demo.pmnd.rs/) | State management |
 | [Rust](https://www.rust-lang.org/) | Backend & audio proxy |
-| [Inno Setup](https://jrsoftware.org/isinfo.php) | Windows installer |
 
 ## 📁 Project Structure
 

@@ -253,7 +253,26 @@ export const usePlayerStore = create<PlayerState>()(
     })
     
     audio.addEventListener('ended', async () => {
-      const { repeat, nextTrack } = get()
+      const { repeat, nextTrack, currentTrack } = get()
+      
+      // Cache the song that just finished playing
+      if (currentTrack) {
+        const { useAppStore } = await import('./appStore')
+        const { addToCache, cacheEnabled } = useAppStore.getState()
+        if (cacheEnabled) {
+          // Call Tauri to cache the audio data
+          if (typeof window !== 'undefined' && window.__TAURI__) {
+            const { invoke } = await import('@tauri-apps/api/core')
+            try {
+              await invoke('cache_audio', { videoId: currentTrack.id })
+              addToCache(currentTrack)
+            } catch {
+              // Silently fail caching
+            }
+          }
+        }
+      }
+      
       if (repeat === 'one') {
         audio.currentTime = 0
         audio.play()

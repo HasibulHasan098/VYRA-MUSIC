@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware'
 import { ArtistPage, HomeSection, PlaylistPage, SearchResult, Song, youtube } from '../api/youtube'
 
 type View = 'home' | 'explore' | 'library' | 'search' | 'settings' | 'queue' | 'artist' | 'playlist'
-type LibraryTab = 'recent' | 'liked' | 'playlists' | 'downloads'
+type LibraryTab = 'recent' | 'liked' | 'artists' | 'playlists' | 'downloads'
 type DownloadQuality = 'normal' | 'high' | 'very_high'
 
 interface DownloadProgress {
@@ -19,6 +19,13 @@ interface UserPlaylist {
   name: string
   songs: Song[]
   createdAt: number
+}
+
+interface FollowedArtist {
+  id: string
+  name: string
+  thumbnail?: string
+  subscribers?: string
 }
 
 interface ViewHistoryEntry {
@@ -88,6 +95,8 @@ interface AppState {
   // User playlists
   userPlaylists: UserPlaylist[]
   selectedUserPlaylist: UserPlaylist | null
+  // Followed artists
+  followedArtists: FollowedArtist[]
   
   setView: (view: View) => void
   setLibraryTab: (tab: LibraryTab) => void
@@ -129,6 +138,7 @@ interface AppState {
   resetGlobalKeybinds: () => void
   // Caching functions
   toggleCacheEnabled: () => void
+  setMaxCachedSongs: (max: number) => void
   addToCache: (track: Song) => void
   removeFromCache: (trackId: string) => void
   clearCache: () => void
@@ -141,6 +151,16 @@ interface AppState {
   removeFromPlaylist: (playlistId: string, trackId: string) => void
   openUserPlaylist: (playlistId: string) => void
   isInPlaylist: (playlistId: string, trackId: string) => boolean
+  // Follow artist functions
+  followArtist: (artist: FollowedArtist) => void
+  unfollowArtist: (artistId: string) => void
+  isFollowing: (artistId: string) => boolean
+  // Clear data functions
+  clearHistory: () => void
+  clearLikedSongs: () => void
+  clearFollowedArtists: () => void
+  clearDownloads: () => void
+  clearPlaylists: () => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -206,6 +226,8 @@ export const useAppStore = create<AppState>()(
       // User playlists
       userPlaylists: [],
       selectedUserPlaylist: null,
+      // Followed artists
+      followedArtists: [],
 
       setView: (view) => {
         const { currentView, viewHistory, searchQuery, searchResults } = get()
@@ -373,6 +395,7 @@ export const useAppStore = create<AppState>()(
           isLoadingArtist: true, 
           currentView: 'artist', 
           searchQuery: '',
+          showLyrics: false,
           viewHistory: [...viewHistory, { view: currentView, searchQuery, searchResults }]
         })
         try {
@@ -389,6 +412,7 @@ export const useAppStore = create<AppState>()(
           isLoadingPlaylist: true, 
           currentView: 'playlist', 
           searchQuery: '',
+          showLyrics: false,
           viewHistory: [...viewHistory, { view: currentView, searchQuery, searchResults }]
         })
         try {
@@ -405,6 +429,7 @@ export const useAppStore = create<AppState>()(
           isLoadingPlaylist: true, 
           currentView: 'playlist', 
           searchQuery: '',
+          showLyrics: false,
           viewHistory: [...viewHistory, { view: currentView, searchQuery, searchResults }]
         })
         try {
@@ -489,6 +514,18 @@ export const useAppStore = create<AppState>()(
 
       // Caching functions
       toggleCacheEnabled: () => set((state) => ({ cacheEnabled: !state.cacheEnabled })),
+
+      setMaxCachedSongs: (max) => {
+        // Limit to 999 max
+        const limitedMax = Math.min(Math.max(1, max), 999)
+        const { cachedSongs } = get()
+        // If current cache exceeds new limit, trim it
+        if (cachedSongs.length > limitedMax) {
+          set({ maxCachedSongs: limitedMax, cachedSongs: cachedSongs.slice(-limitedMax) })
+        } else {
+          set({ maxCachedSongs: limitedMax })
+        }
+      },
 
       addToCache: (track) => {
         const { cachedSongs, maxCachedSongs, cacheEnabled } = get()
@@ -741,6 +778,47 @@ export const useAppStore = create<AppState>()(
       isInPlaylist: (playlistId, trackId) => {
         const playlist = get().userPlaylists.find(p => p.id === playlistId)
         return playlist ? playlist.songs.some(s => s.id === trackId) : false
+      },
+
+      // Follow artist functions
+      followArtist: (artist) => {
+        const { followedArtists } = get()
+        if (!followedArtists.some(a => a.id === artist.id)) {
+          set({ followedArtists: [...followedArtists, artist] })
+        }
+      },
+
+      unfollowArtist: (artistId) => {
+        set({ followedArtists: get().followedArtists.filter(a => a.id !== artistId) })
+      },
+
+      isFollowing: (artistId) => {
+        return get().followedArtists.some(a => a.id === artistId)
+      },
+
+      // Clear data functions
+      clearHistory: () => {
+        import('./playerStore').then(({ usePlayerStore }) => {
+          usePlayerStore.setState({ recentlyPlayed: [] })
+        })
+      },
+
+      clearLikedSongs: () => {
+        import('./playerStore').then(({ usePlayerStore }) => {
+          usePlayerStore.setState({ likedSongs: [] })
+        })
+      },
+
+      clearFollowedArtists: () => {
+        set({ followedArtists: [] })
+      },
+
+      clearDownloads: () => {
+        set({ downloads: [], downloadedSongs: [] })
+      },
+
+      clearPlaylists: () => {
+        set({ userPlaylists: [], selectedUserPlaylist: null })
       }
     }),
     {
@@ -754,6 +832,7 @@ export const useAppStore = create<AppState>()(
         downloadedSongs: state.downloadedSongs,
         cacheEnabled: state.cacheEnabled,
         cachedSongs: state.cachedSongs,
+        maxCachedSongs: state.maxCachedSongs,
         minimizeToTray: state.minimizeToTray,
         discordRpcEnabled: state.discordRpcEnabled,
         autoplayEnabled: state.autoplayEnabled,
@@ -764,7 +843,8 @@ export const useAppStore = create<AppState>()(
         globalKeybindsEnabled: state.globalKeybindsEnabled,
         inAppKeybinds: state.inAppKeybinds,
         globalKeybinds: state.globalKeybinds,
-        userPlaylists: state.userPlaylists
+        userPlaylists: state.userPlaylists,
+        followedArtists: state.followedArtists
       })
     }
   )

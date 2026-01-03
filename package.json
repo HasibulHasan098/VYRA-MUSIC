@@ -1,6 +1,6 @@
 {
   "name": "vyra",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "VYRA - YouTube Music client for Desktop",
   "type": "module",
   "scripts": {
@@ -8,10 +8,7 @@
     "build": "vite build",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
-    "tauri:build": "tauri build",
-    "installer:images": "node scripts/generate-installer-images.cjs",
-    "installer:build": ".\\\"Inno Setup 6\"\\ISCC.exe installer/vyra-setup.iss",
-    "release": "npm run tauri:build && npm run installer:build"
+    "tauri:build": "tauri build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
@@ -26,10 +23,7 @@
     "@types/react-dom": "^18.2.17",
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
-    "jimp": "^1.6.0",
-    "png-to-ico": "^2.1.8",
     "postcss": "^8.4.32",
-    "sharp": "^0.34.5",
     "tailwindcss": "^3.3.6",
     "typescript": "^5.3.3",
     "vite": "^5.0.8"

@@ -291,7 +291,7 @@ export default function LyricsPanel() {
     return (
       <div className="flex-1 flex flex-col items-center justify-center" style={backgroundStyle}>
         <Loader2 size={40} className="animate-spin mb-4" style={{ color: accentColor }} />
-        <p className="text-white/60">Loading lyrics...</p>
+        <p className={darkMode ? 'text-white/60' : 'text-black/60'}>Loading lyrics...</p>
       </div>
     )
   }
@@ -299,8 +299,8 @@ export default function LyricsPanel() {
   if (error || !lyrics) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center" style={backgroundStyle}>
-        <Music2 size={64} className="text-white/30 mb-4" />
-        <p className="text-white/60 text-lg">{error || 'No lyrics available'}</p>
+        <Music2 size={64} className={darkMode ? 'text-white/30 mb-4' : 'text-black/30 mb-4'} />
+        <p className={`text-lg ${darkMode ? 'text-white/60' : 'text-black/60'}`}>{error || 'No lyrics available'}</p>
       </div>
     )
   }
@@ -308,8 +308,8 @@ export default function LyricsPanel() {
   if (!currentTrack) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center" style={backgroundStyle}>
-        <Music2 size={64} className="text-white/30 mb-4" />
-        <p className="text-white/60 text-lg">Play a song to see lyrics</p>
+        <Music2 size={64} className={darkMode ? 'text-white/30 mb-4' : 'text-black/30 mb-4'} />
+        <p className={`text-lg ${darkMode ? 'text-white/60' : 'text-black/60'}`}>Play a song to see lyrics</p>
       </div>
     )
   }

@@ -746,6 +746,45 @@ async fn select_folder(app: tauri::AppHandle) -> Result<Option<String>, String> 
     }
 }
 
+#[tauri::command]
+async fn save_file_dialog(
+    app: tauri::AppHandle,
+    default_name: String,
+) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use std::sync::mpsc;
+    
+    let (tx, rx) = mpsc::channel();
+    
+    app.dialog()
+        .file()
+        .set_title("Save Backup File")
+        .set_file_name(&default_name)
+        .add_filter("VYRA Backup", &["vyra"])
+        .save_file(move |path| {
+            let result = path.map(|p| p.to_string());
+            let _ = tx.send(result);
+        });
+    
+    // Wait for the result
+    match rx.recv() {
+        Ok(path) => Ok(path),
+        Err(_) => Ok(None)
+    }
+}
+
+#[tauri::command]
+async fn write_text_file(path: String, content: String) -> Result<(), String> {
+    use std::io::Write;
+    
+    let mut file = std::fs::File::create(&path)
+        .map_err(|e| format!("Failed to create file: {}", e))?;
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    
+    Ok(())
+}
+
 // Cache audio for offline playback
 #[tauri::command]
 async fn cache_audio(
@@ -1350,6 +1389,8 @@ fn main() {
             yt_stream,
             download_track,
             select_folder,
+            save_file_dialog,
+            write_text_file,
             cache_audio,
             get_cached_audio,
             clear_audio_cache,

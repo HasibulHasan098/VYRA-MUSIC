@@ -3,6 +3,7 @@ import {
   Moon,
   Sun,
   Download,
+  Upload,
   User,
   Info,
   ExternalLink,
@@ -21,6 +22,7 @@ import {
   Keyboard,
 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
+import { usePlayerStore } from '../store/playerStore'
 import { isUpdateAvailable, getCurrentVersion, downloadAndInstallUpdate, openReleasesPage, ReleaseInfo } from '../api/updater'
 
 // Extend Window interface for Tauri
@@ -41,6 +43,8 @@ export default function SettingsView() {
     cacheEnabled,
     toggleCacheEnabled,
     cachedSongs,
+    maxCachedSongs,
+    setMaxCachedSongs,
     clearCache,
     minimizeToTray,
     toggleMinimizeToTray,
@@ -65,7 +69,16 @@ export default function SettingsView() {
     setGlobalKeybind,
     resetInAppKeybinds,
     resetGlobalKeybinds,
+    clearHistory,
+    clearLikedSongs,
+    clearFollowedArtists,
+    clearDownloads,
+    clearPlaylists,
+    followedArtists,
+    userPlaylists,
+    downloadedSongs,
   } = useAppStore()
+  const { likedSongs, recentlyPlayed } = usePlayerStore()
   const [showQualityDropdown, setShowQualityDropdown] = useState(false)
   const [showPresetDropdown, setShowPresetDropdown] = useState(false)
   const [showAccentPicker, setShowAccentPicker] = useState(false)
@@ -79,6 +92,33 @@ export default function SettingsView() {
   const [editingKeybind, setEditingKeybind] = useState<string | null>(null)
   const [keybindTab, setKeybindTab] = useState<'inapp' | 'global'>('inapp')
   const [currentKeys, setCurrentKeys] = useState<string>('')
+  const [showClearDataModal, setShowClearDataModal] = useState(false)
+  const [clearDataOptions, setClearDataOptions] = useState({
+    history: false,
+    liked: false,
+    artists: false,
+    downloads: false,
+    playlists: false,
+  })
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [exportOptions, setExportOptions] = useState({
+    history: true,
+    liked: true,
+    artists: true,
+    downloads: true,
+    playlists: true,
+  })
+  const [importOptions, setImportOptions] = useState({
+    history: true,
+    liked: true,
+    artists: true,
+    downloads: true,
+    playlists: true,
+  })
+  const [importMode, setImportMode] = useState<'merge' | 'fresh'>('merge')
+  const [importedData, setImportedData] = useState<any>(null)
+  const [importFileName, setImportFileName] = useState<string>('')
 
   // Check for updates on mount
   useEffect(() => {
@@ -308,6 +348,189 @@ export default function SettingsView() {
     }
   }
 
+  const handleClearData = () => {
+    if (clearDataOptions.history) clearHistory()
+    if (clearDataOptions.liked) clearLikedSongs()
+    if (clearDataOptions.artists) clearFollowedArtists()
+    if (clearDataOptions.downloads) clearDownloads()
+    if (clearDataOptions.playlists) clearPlaylists()
+    
+    // Reset options and close modal
+    setClearDataOptions({
+      history: false,
+      liked: false,
+      artists: false,
+      downloads: false,
+      playlists: false,
+    })
+    setShowClearDataModal(false)
+  }
+
+  const hasSelectedClearOption = Object.values(clearDataOptions).some(v => v)
+  const hasSelectedExportOption = Object.values(exportOptions).some(v => v)
+  const hasSelectedImportOption = Object.values(importOptions).some(v => v)
+
+  // Export data to .vyra file
+  const handleExportData = async () => {
+    const exportData: any = {
+      version: '1.0',
+      exportedAt: new Date().toISOString(),
+      data: {},
+    }
+
+    if (exportOptions.history) exportData.data.recentlyPlayed = recentlyPlayed
+    if (exportOptions.liked) exportData.data.likedSongs = likedSongs
+    if (exportOptions.artists) exportData.data.followedArtists = followedArtists
+    if (exportOptions.downloads) exportData.data.downloadedSongs = downloadedSongs
+    if (exportOptions.playlists) exportData.data.userPlaylists = userPlaylists
+
+    const jsonContent = JSON.stringify(exportData, null, 2)
+    const defaultFileName = `vyra-backup-${new Date().toISOString().split('T')[0]}.vyra`
+
+    // Try to use Tauri save dialog if available
+    if (typeof window !== 'undefined' && window.__TAURI__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const filePath = await invoke<string | null>('save_file_dialog', {
+          defaultName: defaultFileName,
+          filters: [{ name: 'VYRA Backup', extensions: ['vyra'] }],
+        })
+
+        if (filePath) {
+          await invoke('write_text_file', { path: filePath, content: jsonContent })
+          setShowExportModal(false)
+          setExportOptions({ history: true, liked: true, artists: true, downloads: true, playlists: true })
+          return
+        } else {
+          // User cancelled
+          return
+        }
+      } catch {
+        // Fallback to browser download if Tauri command fails
+      }
+    }
+
+    // Browser fallback
+    const blob = new Blob([jsonContent], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = defaultFileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+
+    setShowExportModal(false)
+    setExportOptions({ history: true, liked: true, artists: true, downloads: true, playlists: true })
+  }
+
+  // Handle file selection for import
+  const handleImportFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    if (!file.name.endsWith('.vyra')) {
+      alert('Please select a .vyra file')
+      return
+    }
+
+    setImportFileName(file.name)
+    const reader = new FileReader()
+    reader.onload = (event) => {
+      try {
+        const data = JSON.parse(event.target?.result as string)
+        if (!data.version || !data.data) {
+          alert('Invalid VYRA backup file')
+          return
+        }
+        setImportedData(data)
+        setShowImportModal(true)
+      } catch {
+        alert('Failed to read backup file')
+      }
+    }
+    reader.readAsText(file)
+    e.target.value = '' // Reset input
+  }
+
+  // Import data from .vyra file
+  const handleImportData = () => {
+    if (!importedData?.data) return
+
+    if (importMode === 'fresh') {
+      // Fresh start - directly set the imported data (replaces existing)
+      if (importOptions.history) {
+        usePlayerStore.setState({ 
+          recentlyPlayed: importedData.data.recentlyPlayed || [] 
+        })
+      }
+      if (importOptions.liked) {
+        usePlayerStore.setState({ 
+          likedSongs: importedData.data.likedSongs || [] 
+        })
+      }
+      if (importOptions.artists) {
+        useAppStore.setState({ 
+          followedArtists: importedData.data.followedArtists || [] 
+        })
+      }
+      if (importOptions.downloads) {
+        useAppStore.setState({ 
+          downloadedSongs: importedData.data.downloadedSongs || [],
+          downloads: []
+        })
+      }
+      if (importOptions.playlists) {
+        useAppStore.setState({ 
+          userPlaylists: importedData.data.userPlaylists || [],
+          selectedUserPlaylist: null
+        })
+      }
+    } else {
+      // Merge mode - add new data without removing existing
+      const playerStore = usePlayerStore.getState()
+      const appStore = useAppStore.getState()
+
+      if (importOptions.history && importedData.data.recentlyPlayed) {
+        const existing = new Set(playerStore.recentlyPlayed.map((s: any) => s.id))
+        const newSongs = importedData.data.recentlyPlayed.filter((s: any) => !existing.has(s.id))
+        usePlayerStore.setState({ recentlyPlayed: [...newSongs, ...playerStore.recentlyPlayed].slice(0, 100) })
+      }
+
+      if (importOptions.liked && importedData.data.likedSongs) {
+        const existing = new Set(playerStore.likedSongs.map((s: any) => s.id))
+        const newSongs = importedData.data.likedSongs.filter((s: any) => !existing.has(s.id))
+        usePlayerStore.setState({ likedSongs: [...newSongs, ...playerStore.likedSongs] })
+      }
+
+      if (importOptions.artists && importedData.data.followedArtists) {
+        const existing = new Set(appStore.followedArtists.map((a: any) => a.id))
+        const newArtists = importedData.data.followedArtists.filter((a: any) => !existing.has(a.id))
+        useAppStore.setState({ followedArtists: [...appStore.followedArtists, ...newArtists] })
+      }
+
+      if (importOptions.downloads && importedData.data.downloadedSongs) {
+        const existing = new Set(appStore.downloadedSongs.map((s: any) => s.id))
+        const newSongs = importedData.data.downloadedSongs.filter((s: any) => !existing.has(s.id))
+        useAppStore.setState({ downloadedSongs: [...appStore.downloadedSongs, ...newSongs] })
+      }
+
+      if (importOptions.playlists && importedData.data.userPlaylists) {
+        const existing = new Set(appStore.userPlaylists.map((p: any) => p.id))
+        const newPlaylists = importedData.data.userPlaylists.filter((p: any) => !existing.has(p.id))
+        useAppStore.setState({ userPlaylists: [...appStore.userPlaylists, ...newPlaylists] })
+      }
+    }
+
+    // Reset and close
+    setShowImportModal(false)
+    setImportedData(null)
+    setImportFileName('')
+    setImportOptions({ history: true, liked: true, artists: true, downloads: true, playlists: true })
+    setImportMode('merge')
+  }
+
   const settingGroups = [
     {
       title: 'Appearance',
@@ -439,7 +662,7 @@ export default function SettingsView() {
         {
           icon: HardDrive,
           label: 'Cache Music',
-          description: `Cache up to 40 songs for offline playback (${cachedSongs.length}/40)`,
+          description: `Cache songs for offline playback (${cachedSongs.length}/${maxCachedSongs})`,
           action: (
             <button
               onClick={toggleCacheEnabled}
@@ -581,6 +804,53 @@ export default function SettingsView() {
       ]
     },
     {
+      title: 'Data Management',
+      items: [
+        {
+          icon: Download,
+          label: 'Export Data',
+          description: 'Save your data to a .vyra file',
+          action: (
+            <button 
+              onClick={() => setShowExportModal(true)}
+              className="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium ios-active"
+            >
+              Export
+            </button>
+          )
+        },
+        {
+          icon: Upload,
+          label: 'Import Data',
+          description: 'Restore data from a .vyra file',
+          action: (
+            <label className="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium ios-active cursor-pointer">
+              Import
+              <input
+                type="file"
+                accept=".vyra"
+                onChange={handleImportFileSelect}
+                className="hidden"
+              />
+            </label>
+          )
+        },
+        {
+          icon: Trash2,
+          label: 'Clear Data',
+          description: 'Remove history, likes, artists, downloads, or playlists',
+          action: (
+            <button 
+              onClick={() => setShowClearDataModal(true)}
+              className="px-3 py-1.5 bg-ios-red text-white rounded-lg text-sm font-medium ios-active"
+            >
+              Clear
+            </button>
+          )
+        }
+      ]
+    },
+    {
       title: 'Account',
       items: [
         {
@@ -685,24 +955,85 @@ export default function SettingsView() {
           </h2>
           <div className={`rounded-xl ${darkMode ? 'bg-ios-card-dark' : 'bg-ios-card'}`}>
             {group.items.map((item, index) => (
-              <div 
-                key={item.label}
-                className={`flex items-center gap-3 px-4 py-3
-                  ${index > 0 ? `border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}` : ''}
-                  ${index === 0 ? 'rounded-t-xl' : ''} 
-                  ${index === group.items.length - 1 ? 'rounded-b-xl' : ''}`}
-              >
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0
-                  ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
-                  <item.icon size={18} className="text-ios-blue" />
+              <div key={item.label}>
+                <div 
+                  className={`flex items-center gap-3 px-4 py-3
+                    ${index > 0 ? `border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}` : ''}
+                    ${index === 0 ? 'rounded-t-xl' : ''} 
+                    ${index === group.items.length - 1 && !(group.title === 'Storage' && item.label === 'Cache Music' && cacheEnabled) ? 'rounded-b-xl' : ''}`}
+                >
+                  <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0
+                    ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                    <item.icon size={18} className="text-ios-blue" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
+                      {item.label}
+                    </p>
+                    <p className="text-xs text-ios-gray truncate">{item.description}</p>
+                  </div>
+                  {item.action}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
-                    {item.label}
-                  </p>
-                  <p className="text-xs text-ios-gray truncate">{item.description}</p>
-                </div>
-                {item.action}
+                
+                {/* Cache Limit Slider - Show right after Cache Music toggle */}
+                {group.title === 'Storage' && item.label === 'Cache Music' && cacheEnabled && (
+                  <div className={`px-4 pb-4 pt-2 border-t ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs text-ios-gray">Cache Limit</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="999"
+                          value={maxCachedSongs}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value) || 1
+                            setMaxCachedSongs(Math.min(999, Math.max(1, val)))
+                          }}
+                          className={`w-16 px-2 py-1 rounded-lg text-xs text-center font-medium
+                            ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}
+                            focus:outline-none focus:ring-1 focus:ring-ios-blue`}
+                        />
+                        <span className="text-xs text-ios-gray">songs</span>
+                      </div>
+                    </div>
+                    <div className="relative h-5 flex items-center">
+                      {/* Track background */}
+                      <div 
+                        className="absolute left-0 right-0 h-1.5 rounded-full"
+                        style={{ background: darkMode ? '#3a3a3c' : '#d1d1d6' }}
+                      />
+                      {/* Filled track */}
+                      <div 
+                        className="absolute left-0 h-1.5 rounded-full ios-transition"
+                        style={{ 
+                          width: `${(maxCachedSongs / 999) * 100}%`,
+                          background: 'var(--accent-color, #007AFF)'
+                        }}
+                      />
+                      {/* Thumb/Dot */}
+                      <div 
+                        className="absolute w-4 h-4 rounded-full bg-white shadow-md border border-black/10 ios-transition pointer-events-none"
+                        style={{ 
+                          left: `calc(${(maxCachedSongs / 999) * 100}% - 8px)`
+                        }}
+                      />
+                      {/* Invisible range input */}
+                      <input
+                        type="range"
+                        min="1"
+                        max="999"
+                        value={maxCachedSongs}
+                        onChange={(e) => setMaxCachedSongs(parseInt(e.target.value))}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                    </div>
+                    <div className="flex justify-between mt-1">
+                      <span className="text-[10px] text-ios-gray">1</span>
+                      <span className="text-[10px] text-ios-gray">999</span>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -1083,6 +1414,410 @@ export default function SettingsView() {
               >
                 <ArrowDownCircle size={16} />
                 Update Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear Data Modal */}
+      {showClearDataModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-sm rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                Clear Data
+              </h2>
+              <button
+                onClick={() => {
+                  setShowClearDataModal(false)
+                  setClearDataOptions({ history: false, liked: false, artists: false, downloads: false, playlists: false })
+                }}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-black'} />
+              </button>
+            </div>
+            
+            {/* Options */}
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-ios-gray mb-4">Select data to clear:</p>
+              
+              {/* History */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                <div 
+                  onClick={() => setClearDataOptions(prev => ({ ...prev, history: !prev.history }))}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${clearDataOptions.history ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {clearDataOptions.history && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>History Data</p>
+                  <p className="text-xs text-ios-gray">{recentlyPlayed.length} songs</p>
+                </div>
+              </label>
+
+              {/* Liked */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                <div 
+                  onClick={() => setClearDataOptions(prev => ({ ...prev, liked: !prev.liked }))}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${clearDataOptions.liked ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {clearDataOptions.liked && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Liked Data</p>
+                  <p className="text-xs text-ios-gray">{likedSongs.length} songs</p>
+                </div>
+              </label>
+
+              {/* Artists */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                <div 
+                  onClick={() => setClearDataOptions(prev => ({ ...prev, artists: !prev.artists }))}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${clearDataOptions.artists ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {clearDataOptions.artists && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Artist Data</p>
+                  <p className="text-xs text-ios-gray">{followedArtists.length} artists</p>
+                </div>
+              </label>
+
+              {/* Downloads */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                <div 
+                  onClick={() => setClearDataOptions(prev => ({ ...prev, downloads: !prev.downloads }))}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${clearDataOptions.downloads ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {clearDataOptions.downloads && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Downloads</p>
+                  <p className="text-xs text-ios-gray">{downloadedSongs.length} songs</p>
+                </div>
+              </label>
+
+              {/* Playlists */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                <div 
+                  onClick={() => setClearDataOptions(prev => ({ ...prev, playlists: !prev.playlists }))}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${clearDataOptions.playlists ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {clearDataOptions.playlists && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Playlist Data</p>
+                  <p className="text-xs text-ios-gray">{userPlaylists.length} playlists</p>
+                </div>
+              </label>
+
+              {/* Select All */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active border-2 border-dashed
+                ${darkMode ? 'border-white/20 hover:bg-white/5' : 'border-black/20 hover:bg-black/5'}`}>
+                <div 
+                  onClick={() => {
+                    const allSelected = Object.values(clearDataOptions).every(v => v)
+                    setClearDataOptions({
+                      history: !allSelected,
+                      liked: !allSelected,
+                      artists: !allSelected,
+                      downloads: !allSelected,
+                      playlists: !allSelected,
+                    })
+                  }}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${Object.values(clearDataOptions).every(v => v) ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {Object.values(clearDataOptions).every(v => v) && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Select All</p>
+                </div>
+              </label>
+            </div>
+            
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <button
+                onClick={() => {
+                  setShowClearDataModal(false)
+                  setClearDataOptions({ history: false, liked: false, artists: false, downloads: false, playlists: false })
+                }}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleClearData}
+                disabled={!hasSelectedClearOption}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                  ${hasSelectedClearOption 
+                    ? 'bg-ios-red text-white' 
+                    : 'bg-ios-gray/30 text-ios-gray cursor-not-allowed'}`}
+              >
+                Clear Selected
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Export Data Modal */}
+      {showExportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-sm rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                Export Data
+              </h2>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-black'} />
+              </button>
+            </div>
+            
+            {/* Options */}
+            <div className="px-5 py-4 space-y-3">
+              <p className="text-sm text-ios-gray mb-4">Select data to export:</p>
+              
+              {[
+                { key: 'history', label: 'History Data', count: `${recentlyPlayed.length} songs` },
+                { key: 'liked', label: 'Liked Data', count: `${likedSongs.length} songs` },
+                { key: 'artists', label: 'Artist Data', count: `${followedArtists.length} artists` },
+                { key: 'downloads', label: 'Downloads', count: `${downloadedSongs.length} songs` },
+                { key: 'playlists', label: 'Playlist Data', count: `${userPlaylists.length} playlists` },
+              ].map(item => (
+                <label key={item.key} className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                  <div 
+                    onClick={() => setExportOptions(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof prev] }))}
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                      ${exportOptions[item.key as keyof typeof exportOptions] ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                  >
+                    {exportOptions[item.key as keyof typeof exportOptions] && <Check size={14} className="text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>{item.label}</p>
+                    <p className="text-xs text-ios-gray">{item.count}</p>
+                  </div>
+                </label>
+              ))}
+
+              {/* Select All */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active border-2 border-dashed
+                ${darkMode ? 'border-white/20 hover:bg-white/5' : 'border-black/20 hover:bg-black/5'}`}>
+                <div 
+                  onClick={() => {
+                    const allSelected = Object.values(exportOptions).every(v => v)
+                    setExportOptions({
+                      history: !allSelected,
+                      liked: !allSelected,
+                      artists: !allSelected,
+                      downloads: !allSelected,
+                      playlists: !allSelected,
+                    })
+                  }}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${Object.values(exportOptions).every(v => v) ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {Object.values(exportOptions).every(v => v) && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Select All</p>
+                </div>
+              </label>
+            </div>
+            
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExportData}
+                disabled={!hasSelectedExportOption}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active flex items-center justify-center gap-2
+                  ${hasSelectedExportOption 
+                    ? 'bg-ios-blue text-white' 
+                    : 'bg-ios-gray/30 text-ios-gray cursor-not-allowed'}`}
+              >
+                <Download size={16} />
+                Export
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Import Data Modal */}
+      {showImportModal && importedData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-sm rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <div>
+                <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                  Import Data
+                </h2>
+                <p className="text-xs text-ios-gray">{importFileName}</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowImportModal(false)
+                  setImportedData(null)
+                  setImportFileName('')
+                }}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-black'} />
+              </button>
+            </div>
+
+            {/* Import Mode Selection */}
+            <div className={`px-5 py-3 border-b ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <p className="text-sm text-ios-gray mb-3">How do you want to import?</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setImportMode('merge')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium ios-active
+                    ${importMode === 'merge' 
+                      ? 'bg-ios-blue text-white' 
+                      : darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                >
+                  Merge
+                </button>
+                <button
+                  onClick={() => setImportMode('fresh')}
+                  className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium ios-active
+                    ${importMode === 'fresh' 
+                      ? 'bg-ios-blue text-white' 
+                      : darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                >
+                  Fresh Start
+                </button>
+              </div>
+              <p className="text-xs text-ios-gray mt-2">
+                {importMode === 'merge' 
+                  ? 'Add imported data to your existing data (duplicates ignored)' 
+                  : 'Replace your existing data with imported data'}
+              </p>
+            </div>
+            
+            {/* Options */}
+            <div className="px-5 py-4 space-y-3 max-h-[300px] overflow-y-auto">
+              <p className="text-sm text-ios-gray mb-2">Select data to import:</p>
+              
+              {[
+                { key: 'history', label: 'History Data', data: importedData.data.recentlyPlayed, count: importedData.data.recentlyPlayed?.length || 0 },
+                { key: 'liked', label: 'Liked Data', data: importedData.data.likedSongs, count: importedData.data.likedSongs?.length || 0 },
+                { key: 'artists', label: 'Artist Data', data: importedData.data.followedArtists, count: importedData.data.followedArtists?.length || 0 },
+                { key: 'downloads', label: 'Downloads', data: importedData.data.downloadedSongs, count: importedData.data.downloadedSongs?.length || 0 },
+                { key: 'playlists', label: 'Playlist Data', data: importedData.data.userPlaylists, count: importedData.data.userPlaylists?.length || 0 },
+              ].map(item => (
+                <label 
+                  key={item.key} 
+                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active
+                    ${!item.data ? 'opacity-50 cursor-not-allowed' : ''}
+                    ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}
+                >
+                  <div 
+                    onClick={() => item.data && setImportOptions(prev => ({ ...prev, [item.key]: !prev[item.key as keyof typeof prev] }))}
+                    className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                      ${!item.data 
+                        ? 'border-ios-gray/30 bg-ios-gray/10' 
+                        : importOptions[item.key as keyof typeof importOptions] 
+                          ? 'bg-ios-blue border-ios-blue' 
+                          : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                  >
+                    {item.data && importOptions[item.key as keyof typeof importOptions] && <Check size={14} className="text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>{item.label}</p>
+                    <p className="text-xs text-ios-gray">
+                      {item.data ? `${item.count} items in backup` : 'Not in backup'}
+                    </p>
+                  </div>
+                </label>
+              ))}
+
+              {/* Select All */}
+              <label className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer ios-active border-2 border-dashed
+                ${darkMode ? 'border-white/20 hover:bg-white/5' : 'border-black/20 hover:bg-black/5'}`}>
+                <div 
+                  onClick={() => {
+                    const allSelected = Object.values(importOptions).every(v => v)
+                    setImportOptions({
+                      history: !allSelected,
+                      liked: !allSelected,
+                      artists: !allSelected,
+                      downloads: !allSelected,
+                      playlists: !allSelected,
+                    })
+                  }}
+                  className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 ios-transition
+                    ${Object.values(importOptions).every(v => v) ? 'bg-ios-blue border-ios-blue' : darkMode ? 'border-white/30' : 'border-black/30'}`}
+                >
+                  {Object.values(importOptions).every(v => v) && <Check size={14} className="text-white" />}
+                </div>
+                <div className="flex-1">
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>Select All</p>
+                </div>
+              </label>
+            </div>
+            
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <button
+                onClick={() => {
+                  setShowImportModal(false)
+                  setImportedData(null)
+                  setImportFileName('')
+                }}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportData}
+                disabled={!hasSelectedImportOption}
+                className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active flex items-center justify-center gap-2
+                  ${hasSelectedImportOption 
+                    ? 'bg-ios-blue text-white' 
+                    : 'bg-ios-gray/30 text-ios-gray cursor-not-allowed'}`}
+              >
+                <Upload size={16} />
+                Import
               </button>
             </div>
           </div>

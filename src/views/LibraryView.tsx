@@ -1,14 +1,15 @@
 import { useState } from 'react'
-import { Plus, Heart, Clock, Download, Music, CheckCircle, Loader2, Trash2, RotateCcw, X, Play } from 'lucide-react'
+import { Plus, Heart, Clock, Download, Music, CheckCircle, Loader2, Trash2, RotateCcw, X, Play, Users } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore, Song } from '../store/playerStore'
 import TrackRow from '../components/TrackRow'
 import Tooltip from '../components/Tooltip'
+import ArtistAvatar from '../components/ArtistAvatar'
 
-type Tab = 'recent' | 'liked' | 'playlists' | 'downloads'
+type Tab = 'recent' | 'liked' | 'artists' | 'playlists' | 'downloads'
 
 export default function LibraryView() {
-  const { darkMode, libraryTab, setLibraryTab, downloads, downloadedSongs, removeDownload, removeDownloadedSong, downloadTrack, userPlaylists, createPlaylist, deletePlaylist, openUserPlaylist } = useAppStore()
+  const { darkMode, libraryTab, setLibraryTab, downloads, downloadedSongs, removeDownload, removeDownloadedSong, downloadTrack, userPlaylists, createPlaylist, deletePlaylist, openUserPlaylist, followedArtists, unfollowArtist, openArtist } = useAppStore()
   const { recentlyPlayed, likedSongs, setQueue } = usePlayerStore()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
@@ -17,6 +18,7 @@ export default function LibraryView() {
   const tabs: { id: Tab; label: string; icon: typeof Heart }[] = [
     { id: 'recent', label: 'Recent', icon: Clock },
     { id: 'liked', label: 'Liked', icon: Heart },
+    { id: 'artists', label: 'Artists', icon: Users },
     { id: 'playlists', label: 'Playlists', icon: Music },
     { id: 'downloads', label: 'Downloads', icon: Download },
   ]
@@ -120,6 +122,64 @@ export default function LibraryView() {
               icon={Heart}
               title="No liked songs yet"
               description="Tap the heart icon on any song to add it here"
+              darkMode={darkMode}
+            />
+          )}
+        </div>
+      )}
+
+      {libraryTab === 'artists' && (
+        <div className="space-y-fib-13">
+          {followedArtists.length > 0 ? (
+            <>
+              <p className="text-fib-13 text-ios-gray">
+                {followedArtists.length} artist{followedArtists.length !== 1 ? 's' : ''} followed
+              </p>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-fib-13">
+                {followedArtists.map((artist) => (
+                  <div 
+                    key={artist.id}
+                    onClick={() => openArtist(artist.id)}
+                    className={`p-fib-13 rounded-fib-13 cursor-pointer ios-active ios-transition text-center group
+                      ${darkMode ? 'bg-ios-card-dark hover:bg-ios-card-secondary-dark' : 'bg-ios-card hover:bg-ios-card-secondary'}`}
+                  >
+                    <div className="relative mb-fib-8 mx-auto w-fit">
+                      <ArtistAvatar 
+                        name={artist.name} 
+                        thumbnail={artist.thumbnail}
+                        size={80}
+                      />
+                      {/* Play overlay */}
+                      <div className="absolute inset-0 rounded-full bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 ios-transition">
+                        <div className="w-10 h-10 rounded-full bg-white/90 flex items-center justify-center">
+                          <Play size={20} fill="black" className="text-black ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                    <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                      {artist.name}
+                    </p>
+                    {artist.subscribers && (
+                      <p className="text-fib-8 text-ios-gray truncate">{artist.subscribers}</p>
+                    )}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        unfollowArtist(artist.id)
+                      }}
+                      className="mt-fib-8 text-fib-8 text-ios-red ios-active hover:underline"
+                    >
+                      Unfollow
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <EmptyState 
+              icon={Users}
+              title="No followed artists"
+              description="Follow artists to see them here and get recommendations"
               darkMode={darkMode}
             />
           )}
