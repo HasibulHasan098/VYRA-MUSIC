@@ -4,7 +4,6 @@ import {
   Sun,
   Download,
   Upload,
-  User,
   Info,
   ExternalLink,
   Github,
@@ -845,24 +844,6 @@ export default function SettingsView() {
               className="px-3 py-1.5 bg-ios-red text-white rounded-lg text-sm font-medium ios-active"
             >
               Clear
-            </button>
-          )
-        }
-      ]
-    },
-    {
-      title: 'Account',
-      items: [
-        {
-          icon: User,
-          label: 'YouTube Music Account',
-          description: 'Sign-in coming soon',
-          action: (
-            <button 
-              disabled
-              className="px-3 py-1.5 bg-ios-gray/30 text-ios-gray rounded-lg text-sm font-medium cursor-not-allowed"
-            >
-              Coming Soon
             </button>
           )
         }

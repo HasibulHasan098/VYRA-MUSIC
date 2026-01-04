@@ -101,8 +101,8 @@ export default function Player({ showLyrics = false, onToggleLyrics }: PlayerPro
   const currentTime = progress * duration
 
   return (
-    <div className={`h-fib-89 flex items-center pl-fib-21 pr-fib-34 gap-fib-21 border-t ios-blur relative
-      ${darkMode ? 'bg-ios-card-dark/80 border-ios-separator-dark' : 'bg-ios-card/80 border-ios-separator'}`}>
+    <div className={`h-fib-89 flex items-center pl-fib-21 pr-fib-34 gap-fib-21 border-t relative
+      ${darkMode ? 'bg-transparent border-ios-separator-dark' : 'bg-transparent border-ios-separator'}`}>
       
       {/* Error toast */}
       {error && (

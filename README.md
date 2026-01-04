@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/releases">
-    <img src="https://img.shields.io/github/v/release/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="Release">
+  <a href="https://vyra.fasthand.study/">
+    <img src="https://img.shields.io/badge/Download-v1.0.6-blue?style=flat-square" alt="Download">
   </a>
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
@@ -32,70 +32,35 @@
 - 🔄 **Queue Management** — Create and manage your play queue
 - ❤️ **Liked Songs** — Save your favorite tracks
 - 📁 **Playlists** — Create custom playlists
-- � ***Follow Artists** — Follow artists and get recommendations
-- � ***Data Backup** — Export/Import your data with `.vyra` files
+- 👤 **Follow Artists** — Follow artists and get recommendations
+- 💾 **Data Backup** — Export/Import your data with `.vyra` files
 - 🖥️ **System Tray** — Minimize to tray with media controls
-- �  **Single Instance** — Only one app window at a time
+- 🔒 **Single Instance** — Only one app window at a time
 - 🎤 **Synced Lyrics** — Real-time lyrics with karaoke-style animation
-- �️* **Fullscreen Mode** — Immersive fullscreen player with lyrics view
+- 🖼️ **Fullscreen Mode** — Immersive fullscreen player with lyrics view
 - 🎶 **Auto-queue** — Automatically fetches related songs when queue ends
 - 📴 **Offline Cache** — Cache songs for offline playback
 - 🔔 **Auto-Updates** — Check for updates and install with one click
+- 🎮 **Discord RPC** — Show what you're listening to on Discord
 
-## 🆕 What's New in v1.0.5
+## 🆕 What's New in v1.0.6
 
-### Follow Artists
-- **Follow Button** — Follow your favorite artists from their artist page
-- **Artists Library** — View all followed artists in the Library tab
-- **Sidebar Artists** — Quick access to followed artists in the sidebar (up to 3 shown)
-- **Artist Recommendations** — Get song recommendations from artists you follow on the home page
-- **Persistent Data** — Followed artists are saved locally
+### Fullscreen Player Improvements
+- **Auto-hide Controls** — Cursor and controls auto-hide after 3 seconds of inactivity
+- **Smooth Transitions** — Controls fade out with smooth 300ms transition
+- **Centered Content** — Album art and lyrics smoothly slide to center when controls are hidden
+- **Improved Seek Bar** — Better drag interaction for the progress bar
 
-### Data Management
-- **Export Data** — Save your data to a `.vyra` backup file
-  - Choose what to export: History, Liked Songs, Artists, Downloads, Playlists
-  - Select save location with file picker dialog
-  - Select All option for quick selection
-- **Import Data** — Restore data from a `.vyra` backup file
-  - **Merge Mode** — Add imported data to existing data (duplicates ignored)
-  - **Fresh Start Mode** — Replace existing data with imported data
-  - Shows what data is available in the backup
-  - Select which data types to import
-- **Clear Data** — Selectively clear your data
-  - Choose what to clear: History, Liked Songs, Artists, Downloads, Playlists
-  - Confirmation popup with round checkboxes
-  - Select All option
-
-### Improved Sidebar
-- **Song Thumbnails** — Library items (Liked Songs, Recently Played, Downloads) show stacked song thumbnails
-- **Artists Section** — Dedicated section for followed artists with divider
-- **Vertical Artist List** — Shows up to 3 artists vertically with proper images
-- **See All Button** — Quick access to full artists list in both collapsed and expanded modes
-- **Click to Open** — Clicking an artist opens their artist page directly
-
-### Music Caching
-- **Offline Playback** — Songs are cached after finishing playback
-- **Adjustable Cache Limit** — Set cache limit from 1 to 999 songs (default: 40)
-- **Cache Limit Slider** — Beautiful slider with draggable thumb appears when caching is enabled
-- **Offline Banner** — Shows cached songs section when offline
-- **Toggle in Settings** — Enable/disable caching in Storage settings
-
-### UI Improvements
-- **Cleaner Sidebar** — Removed song count from library items for cleaner look
-- **Better Spacing** — Improved spacing in collapsed and expanded sidebar modes
-- **Round Checkboxes** — Modern round checkbox design in data management modals
-
-### Installer & Bug Fixes
-- **Removed Inno Setup** — Switched to Tauri's built-in NSIS installer
-- **Auto-Uninstall Old Versions** — Automatically removes old Inno Setup installations when upgrading
-- **Fixed Freezing at Start** — Resolved app freezing issue on startup
+### Code Cleanup
+- **Removed YouTube Music Sign-in** — Removed unused YouTube Music account sync feature
+- **Cleaner Codebase** — Removed orphaned code and duplicate functions
 
 ## 🚀 Installation
 
 ### Windows
 
-1. Download the latest installer from [Releases](https://github.com/HasibulHasan098/VYRA-MUSIC/releases)
-2. Run `VYRA_1.0.5_x64-setup.exe`
+1. Download the latest installer from [vyra.fasthand.study](https://vyra.fasthand.study/)
+2. Run `VYRA_1.0.6_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -112,7 +77,6 @@ npm install
 npm run tauri:dev
 
 # Build for production
-# Installer will be at: src-tauri/target/release/bundle/nsis/VYRA_x.x.x_x64-setup.exe
 npm run tauri:build
 ```
 
@@ -179,6 +143,7 @@ This project is open source and available under the [MIT License](LICENSE).
 
 **FASTHAND**
 
+- Website: [vyra.fasthand.study](https://vyra.fasthand.study/)
 - GitHub: [@HasibulHasan098](https://github.com/HasibulHasan098)
 
 ---

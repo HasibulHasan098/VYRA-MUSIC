@@ -70,7 +70,7 @@ export default function Sidebar() {
   return (
     <aside className={`flex flex-col border-r ios-transition relative
       ${sidebarCollapsed ? 'w-[72px]' : 'w-[220px]'}
-      ${darkMode ? 'bg-ios-card-dark border-ios-separator-dark' : 'bg-ios-card border-ios-separator'}`}>
+      ${darkMode ? 'bg-transparent border-ios-separator-dark' : 'bg-transparent border-ios-separator'}`}>
       
       {/* Collapse button */}
       <Tooltip text={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'} position="right">

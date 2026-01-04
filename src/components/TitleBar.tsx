@@ -104,7 +104,7 @@ export default function TitleBar() {
     <div 
       data-tauri-drag-region
       className={`h-fib-55 flex items-center px-fib-13 border-b
-        ${darkMode ? 'bg-ios-card-dark border-ios-separator-dark' : 'bg-ios-card border-ios-separator'}`}
+        ${darkMode ? 'bg-transparent border-ios-separator-dark' : 'bg-transparent border-ios-separator'}`}
     >
       {/* Left side - Update button or empty spacer */}
       <div data-tauri-drag-region className="w-40 flex-shrink-0 h-full flex items-center gap-fib-5">

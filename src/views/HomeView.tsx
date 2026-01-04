@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Loader2, RefreshCw, ChevronLeft, ChevronRight, Play, Music, MoreHorizontal, ListMusic, WifiOff, Download } from 'lucide-react'
+import { Loader2, RefreshCw, ChevronLeft, ChevronRight, Play, Pause, Music, MoreHorizontal, ListMusic, WifiOff, Download } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore, Song } from '../store/playerStore'
 import { AlbumItem, PlaylistItem, ArtistItem } from '../api/youtube'
@@ -8,7 +8,7 @@ import SongContextMenu from '../components/SongContextMenu'
 
 export default function HomeView() {
   const { darkMode, homeSections, isLoadingHome, fetchHome, recommendations, fetchRecommendations, openPlaylist, openArtist, cachedSongs, followedArtists } = useAppStore()
-  const { setQueue, likedSongs, recentlyPlayed } = usePlayerStore()
+  const { setQueue, likedSongs, recentlyPlayed, currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const [favoriteArtistSongs, setFavoriteArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
   const [followedArtistSongs, setFollowedArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
   const [isOffline, setIsOffline] = useState(!navigator.onLine)
@@ -160,30 +160,38 @@ export default function HomeView() {
               </h2>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {cachedSongs.map((track, idx) => (
-                <div
-                  key={`cached-${track.id}-${idx}`}
-                  onClick={() => setQueue(cachedSongs, idx)}
-                  className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
-                    ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}
-                >
-                  <div className="w-12 h-12 flex-shrink-0 overflow-hidden">
-                    <img 
-                      src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
-                      alt=""
-                      className="w-full h-full object-cover scale-[1.35]"
-                    />
+              {cachedSongs.map((track, idx) => {
+                const isActive = currentTrack?.id === track.id
+                return (
+                  <div
+                    key={`cached-${track.id}-${idx}`}
+                    onClick={() => isActive ? togglePlay() : setQueue(cachedSongs, idx)}
+                    className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
+                      ${isActive ? (darkMode ? 'bg-ios-blue/30' : 'bg-ios-blue/20') : (darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10')}`}
+                  >
+                    <div className="w-12 h-12 flex-shrink-0 overflow-hidden relative">
+                      <img 
+                        src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                        alt=""
+                        className="w-full h-full object-cover scale-[1.35]"
+                      />
+                      {isActive && isPlaying && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <Pause size={16} fill="white" className="text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 py-2">
+                      <p className={`text-sm font-medium truncate ${isActive ? 'text-ios-blue' : (darkMode ? 'text-white' : 'text-black')}`}>
+                        {track.title}
+                      </p>
+                      <p className="text-xs text-ios-gray truncate">
+                        {track.artists.map(a => a.name).join(', ')}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0 py-2">
-                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
-                      {track.title}
-                    </p>
-                    <p className="text-xs text-ios-gray truncate">
-                      {track.artists.map(a => a.name).join(', ')}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </section>
         ) : (
@@ -206,30 +214,38 @@ export default function HomeView() {
             </h2>
             <p className="text-sm text-ios-gray mb-3">Some may not play offline</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-              {likedSongs.slice(0, 8).map((track, idx) => (
-                <div
-                  key={`liked-offline-${track.id}-${idx}`}
-                  onClick={() => setQueue(likedSongs, idx)}
-                  className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
-                    ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}
-                >
-                  <div className="w-12 h-12 flex-shrink-0 overflow-hidden">
-                    <img 
-                      src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
-                      alt=""
-                      className="w-full h-full object-cover scale-[1.35]"
-                    />
+              {likedSongs.slice(0, 8).map((track, idx) => {
+                const isActive = currentTrack?.id === track.id
+                return (
+                  <div
+                    key={`liked-offline-${track.id}-${idx}`}
+                    onClick={() => isActive ? togglePlay() : setQueue(likedSongs, idx)}
+                    className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
+                      ${isActive ? (darkMode ? 'bg-ios-blue/30' : 'bg-ios-blue/20') : (darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10')}`}
+                  >
+                    <div className="w-12 h-12 flex-shrink-0 overflow-hidden relative">
+                      <img 
+                        src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                        alt=""
+                        className="w-full h-full object-cover scale-[1.35]"
+                      />
+                      {isActive && isPlaying && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <Pause size={16} fill="white" className="text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0 py-2">
+                      <p className={`text-sm font-medium truncate ${isActive ? 'text-ios-blue' : (darkMode ? 'text-white' : 'text-black')}`}>
+                        {track.title}
+                      </p>
+                      <p className="text-xs text-ios-gray truncate">
+                        {track.artists.map(a => a.name).join(', ')}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0 py-2">
-                    <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
-                      {track.title}
-                    </p>
-                    <p className="text-xs text-ios-gray truncate">
-                      {track.artists.map(a => a.name).join(', ')}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </section>
         )}
@@ -503,10 +519,15 @@ function QuickPicksGrid({
   darkMode: boolean
   setQueue: (tracks: Song[], index: number) => void
 }) {
+  const { currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const [imgErrors, setImgErrors] = useState<Set<string>>(new Set())
 
-  const handlePlay = (index: number) => {
-    setQueue(tracks, index)
+  const handlePlay = (track: Song, index: number) => {
+    if (currentTrack?.id === track.id) {
+      togglePlay()
+    } else {
+      setQueue(tracks, index)
+    }
   }
 
   // Show up to 8 tracks in 2 rows
@@ -518,37 +539,45 @@ function QuickPicksGrid({
         {title}
       </h2>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        {displayTracks.map((track, idx) => (
-          <div
-            key={`quick-${track.id}-${idx}`}
-            onClick={() => handlePlay(idx)}
-            className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
-              ${darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10'}`}
-          >
-            {imgErrors.has(track.id) ? (
-              <div className="w-12 h-12 bg-gradient-to-br from-ios-purple to-ios-blue flex items-center justify-center flex-shrink-0">
-                <Music size={20} className="text-white/80" />
+        {displayTracks.map((track, idx) => {
+          const isActive = currentTrack?.id === track.id
+          return (
+            <div
+              key={`quick-${track.id}-${idx}`}
+              onClick={() => handlePlay(track, idx)}
+              className={`flex items-center gap-3 pr-2 rounded-md cursor-pointer ios-active group overflow-hidden
+                ${isActive ? (darkMode ? 'bg-ios-blue/30' : 'bg-ios-blue/20') : (darkMode ? 'bg-white/10 hover:bg-white/20' : 'bg-black/5 hover:bg-black/10')}`}
+            >
+              {imgErrors.has(track.id) ? (
+                <div className="w-12 h-12 bg-gradient-to-br from-ios-purple to-ios-blue flex items-center justify-center flex-shrink-0">
+                  <Music size={20} className="text-white/80" />
+                </div>
+              ) : (
+                <div className="w-12 h-12 flex-shrink-0 overflow-hidden relative">
+                  <img 
+                    src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
+                    alt=""
+                    className="w-full h-full object-cover scale-[1.35]"
+                    onError={() => setImgErrors(prev => new Set(prev).add(track.id))}
+                  />
+                  {isActive && isPlaying && (
+                    <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                      <Pause size={16} fill="white" className="text-white" />
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="flex-1 min-w-0 py-2">
+                <p className={`text-sm font-medium truncate ${isActive ? 'text-ios-blue' : (darkMode ? 'text-white' : 'text-black')}`}>
+                  {track.title}
+                </p>
+                <p className="text-xs text-ios-gray truncate">
+                  {track.artists.map(a => a.name).join(', ')}
+                </p>
               </div>
-            ) : (
-              <div className="w-12 h-12 flex-shrink-0 overflow-hidden">
-                <img 
-                  src={`https://img.youtube.com/vi/${track.id}/hqdefault.jpg`} 
-                  alt=""
-                  className="w-full h-full object-cover scale-[1.35]"
-                  onError={() => setImgErrors(prev => new Set(prev).add(track.id))}
-                />
-              </div>
-            )}
-            <div className="flex-1 min-w-0 py-2">
-              <p className={`text-sm font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
-                {track.title}
-              </p>
-              <p className="text-xs text-ios-gray truncate">
-                {track.artists.map(a => a.name).join(', ')}
-              </p>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
@@ -656,10 +685,18 @@ function SongCard({
   index: number
   darkMode: boolean 
 }) {
-  const { setQueue, currentTrack, isPlaying } = usePlayerStore()
+  const { setQueue, currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const isActive = currentTrack?.id === track.id
   const [imgError, setImgError] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
+
+  const handleClick = () => {
+    if (isActive) {
+      togglePlay()
+    } else {
+      setQueue(allTracks, index)
+    }
+  }
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -676,7 +713,7 @@ function SongCard({
   return (
     <>
       <div 
-        onClick={() => setQueue(allTracks, index)}
+        onClick={handleClick}
         onContextMenu={handleContextMenu}
         className="flex-shrink-0 w-[160px] cursor-pointer group"
       >
@@ -705,11 +742,7 @@ function SongCard({
             ${isActive && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
             <div className="w-12 h-12 rounded-full bg-white/90 flex items-center justify-center">
               {isActive && isPlaying ? (
-                <div className="flex items-center gap-0.5">
-                  <span className="w-1 h-4 bg-black rounded-full animate-pulse" />
-                  <span className="w-1 h-5 bg-black rounded-full animate-pulse" style={{ animationDelay: '75ms' }} />
-                  <span className="w-1 h-3 bg-black rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                </div>
+                <Pause size={24} fill="black" className="text-black" />
               ) : (
                 <Play size={24} fill="black" className="text-black ml-1" />
               )}

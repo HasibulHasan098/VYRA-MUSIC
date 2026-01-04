@@ -14,7 +14,7 @@ use souvlaki::{MediaControlEvent, MediaControls, MediaMetadata, MediaPlayback, P
 use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 
 const INNERTUBE_API_KEY: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
-const DISCORD_CLIENT_ID: &str = "1456592368005283893"; // You'll need to create a Discord app and get this ID
+const DISCORD_CLIENT_ID: &str = "1456592368005283893";
 
 struct AppState {
     client: Client,
@@ -71,13 +71,11 @@ fn init_media_controls(app_handle: tauri::AppHandle) -> Option<Arc<Mutex<MediaCo
         };
         use windows::core::{PCWSTR, w};
         
-        // Custom window procedure
         unsafe extern "system" fn wnd_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
             windows::Win32::UI::WindowsAndMessaging::DefWindowProcW(hwnd, msg, wparam, lparam)
         }
         
         unsafe {
-            // Create a hidden window class for SMTC
             let class_name = w!("VYRAMediaClass");
             
             let wc = WNDCLASSW {
@@ -90,7 +88,6 @@ fn init_media_controls(app_handle: tauri::AppHandle) -> Option<Arc<Mutex<MediaCo
             
             RegisterClassW(&wc);
             
-            // Create hidden window
             let hwnd = CreateWindowExW(
                 WINDOW_EX_STYLE::default(),
                 class_name,
@@ -273,7 +270,6 @@ async fn yt_next(
     let visitor_data = state.visitor_data.lock().unwrap().clone();
     let context = create_context(visitor_data.as_deref(), "WEB_REMIX", "1.20231204.01.00");
 
-    // Request the radio playlist (RDAMVM prefix) to get related songs
     let playlist_id = format!("RDAMVM{}", video_id);
     
     let body = json!({
@@ -310,25 +306,21 @@ async fn yt_next(
     response.json().await.map_err(|e| e.to_string())
 }
 
+
 #[tauri::command]
 async fn yt_stream(
     state: State<'_, AppState>,
     video_id: String,
 ) -> Result<Option<String>, String> {
-    // Get current timestamp for signature
     let sig_timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs() / 86400; // Days since epoch
+        .as_secs() / 86400;
 
     let clients = vec![
-        // Android Music - best for audio
         ("ANDROID_MUSIC", "6.42.52", "21", "com.google.android.apps.youtube.music/6.42.52 (Linux; U; Android 11) gzip"),
-        // Android VR - good fallback
         ("ANDROID_VR", "1.43.32", "28", "com.google.android.apps.youtube.vr.oculus/1.43.32 (Linux; U; Android 12L; eureka-user Build/SQ3A.220605.009.A1) gzip"),
-        // iOS - another fallback
         ("IOS", "19.45.4", "5", "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X;)"),
-        // TV Embedded - works for many restricted videos
         ("TVHTML5_SIMPLY_EMBEDDED_PLAYER", "2.0", "85", "Mozilla/5.0 (PlayStation; PlayStation 4/11.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.4 Safari/605.1.15"),
     ];
 
@@ -377,12 +369,10 @@ async fn yt_stream(
             if let Ok(data) = resp.json::<Value>().await {
                 let status = data["playabilityStatus"]["status"].as_str().unwrap_or("");
                 
-                // Log for debugging
                 if status != "OK" {
                     continue;
                 }
 
-                // Try adaptiveFormats first (higher quality)
                 if let Some(formats) = data["streamingData"]["adaptiveFormats"].as_array() {
                     if let Some(url) = find_best_audio_url(formats) {
                         state.stream_urls.lock().unwrap().insert(video_id.clone(), url);
@@ -390,7 +380,6 @@ async fn yt_stream(
                     }
                 }
 
-                // Fallback to regular formats
                 if let Some(formats) = data["streamingData"]["formats"].as_array() {
                     if let Some(url) = find_best_audio_url(formats) {
                         state.stream_urls.lock().unwrap().insert(video_id.clone(), url);
@@ -463,14 +452,12 @@ fn find_best_audio_url(formats: &[Value]) -> Option<String> {
         })
         .collect();
 
-    // Sort by bitrate (highest first)
     audio_formats.sort_by(|a, b| {
         let bitrate_a = a["bitrate"].as_i64().unwrap_or(0);
         let bitrate_b = b["bitrate"].as_i64().unwrap_or(0);
         bitrate_b.cmp(&bitrate_a)
     });
 
-    // Return first format with a URL
     for format in audio_formats {
         if let Some(url) = format["url"].as_str() {
             return Some(url.to_string());
@@ -479,7 +466,6 @@ fn find_best_audio_url(formats: &[Value]) -> Option<String> {
     None
 }
 
-// Find audio URL by quality preference
 fn find_audio_url_by_quality(formats: &[Value], quality: &str) -> Option<String> {
     let mut audio_formats: Vec<&Value> = formats
         .iter()
@@ -491,7 +477,6 @@ fn find_audio_url_by_quality(formats: &[Value], quality: &str) -> Option<String>
         })
         .collect();
 
-    // Sort by bitrate
     audio_formats.sort_by(|a, b| {
         let bitrate_a = a["bitrate"].as_i64().unwrap_or(0);
         let bitrate_b = b["bitrate"].as_i64().unwrap_or(0);
@@ -502,16 +487,16 @@ fn find_audio_url_by_quality(formats: &[Value], quality: &str) -> Option<String>
         return None;
     }
 
-    // Select based on quality
     let idx = match quality {
-        "very_high" => 0, // Highest bitrate
-        "high" => audio_formats.len() / 3, // Upper third
-        _ => audio_formats.len() / 2, // Middle (normal)
+        "very_high" => 0,
+        "high" => audio_formats.len() / 3,
+        _ => audio_formats.len() / 2,
     };
 
     let selected = audio_formats.get(idx.min(audio_formats.len() - 1))?;
     selected["url"].as_str().map(|s| s.to_string())
 }
+
 
 #[tauri::command]
 async fn download_track(
@@ -524,7 +509,6 @@ async fn download_track(
 ) -> Result<String, String> {
     use std::io::Write;
     
-    // Get stream URL - first check cache
     let stream_url = {
         let urls = state.stream_urls.lock().unwrap();
         urls.get(&video_id).cloned()
@@ -533,7 +517,6 @@ async fn download_track(
     let url = if let Some(url) = stream_url {
         url
     } else {
-        // Try multiple clients like yt_stream does
         let sig_timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -597,7 +580,6 @@ async fn download_track(
                         continue;
                     }
 
-                    // Try adaptiveFormats first
                     if let Some(formats) = data["streamingData"]["adaptiveFormats"].as_array() {
                         if let Some(url) = find_audio_url_by_quality(formats, &quality) {
                             found_url = Some(url);
@@ -605,7 +587,6 @@ async fn download_track(
                         }
                     }
 
-                    // Fallback to regular formats
                     if let Some(formats) = data["streamingData"]["formats"].as_array() {
                         if let Some(url) = find_audio_url_by_quality(formats, &quality) {
                             found_url = Some(url);
@@ -616,7 +597,7 @@ async fn download_track(
             }
         }
 
-        // Fallback to Piped API if InnerTube fails
+        // Fallback to Piped API
         if found_url.is_none() {
             let piped_instances = vec![
                 "https://pipedapi.kavin.rocks",
@@ -653,7 +634,6 @@ async fn download_track(
                                     bitrate_b.cmp(&bitrate_a)
                                 });
 
-                                // Select based on quality
                                 if !audio_streams.is_empty() {
                                     let idx = match quality.as_str() {
                                         "very_high" => 0,
@@ -678,7 +658,6 @@ async fn download_track(
         found_url.ok_or_else(|| "Could not find audio stream for this track".to_string())?
     };
 
-    // Download the audio
     let response = state
         .client
         .get(&url)
@@ -689,7 +668,6 @@ async fn download_track(
 
     let bytes = response.bytes().await.map_err(|e| format!("Failed to read response: {}", e))?;
 
-    // Determine download path
     let base_path = if let Some(path) = download_path {
         if path.is_empty() {
             dirs::audio_dir().unwrap_or_else(|| dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
@@ -700,11 +678,9 @@ async fn download_track(
         dirs::audio_dir().unwrap_or_else(|| dirs::download_dir().unwrap_or_else(|| std::path::PathBuf::from(".")))
     };
 
-    // Create VYRA subfolder
     let download_dir = base_path.join("VYRA");
     std::fs::create_dir_all(&download_dir).map_err(|e| format!("Failed to create directory: {}", e))?;
 
-    // Sanitize filename
     let safe_title: String = title.chars()
         .map(|c| if c.is_alphanumeric() || c == ' ' || c == '-' || c == '_' { c } else { '_' })
         .collect();
@@ -715,7 +691,6 @@ async fn download_track(
     let filename = format!("{} - {}.webm", safe_artist, safe_title);
     let file_path = download_dir.join(&filename);
 
-    // Write file
     let mut file = std::fs::File::create(&file_path)
         .map_err(|e| format!("Failed to create file: {}", e))?;
     file.write_all(&bytes)
@@ -723,6 +698,7 @@ async fn download_track(
 
     Ok(file_path.to_string_lossy().to_string())
 }
+
 
 #[tauri::command]
 async fn select_folder(app: tauri::AppHandle) -> Result<Option<String>, String> {
@@ -739,7 +715,6 @@ async fn select_folder(app: tauri::AppHandle) -> Result<Option<String>, String> 
             let _ = tx.send(result);
         });
     
-    // Wait for the result
     match rx.recv() {
         Ok(path) => Ok(path),
         Err(_) => Ok(None)
@@ -766,7 +741,6 @@ async fn save_file_dialog(
             let _ = tx.send(result);
         });
     
-    // Wait for the result
     match rx.recv() {
         Ok(path) => Ok(path),
         Err(_) => Ok(None)
@@ -785,13 +759,11 @@ async fn write_text_file(path: String, content: String) -> Result<(), String> {
     Ok(())
 }
 
-// Cache audio for offline playback
 #[tauri::command]
 async fn cache_audio(
     state: State<'_, AppState>,
     video_id: String,
 ) -> Result<bool, String> {
-    // Check if already cached
     {
         let cache = state.audio_cache.lock().unwrap();
         if cache.contains_key(&video_id) {
@@ -799,7 +771,6 @@ async fn cache_audio(
         }
     }
 
-    // Get stream URL
     let url = {
         let urls = state.stream_urls.lock().unwrap();
         urls.get(&video_id).cloned()
@@ -810,9 +781,7 @@ async fn cache_audio(
         None => return Err("No stream URL available. Play the song first.".to_string()),
     };
 
-    // Download and cache the audio
-    let response = state
-        .client
+    let response = reqwest::Client::new()
         .get(&url)
         .header("User-Agent", "com.google.android.apps.youtube.music/6.42.52")
         .send()
@@ -821,7 +790,6 @@ async fn cache_audio(
 
     let bytes = response.bytes().await.map_err(|e| format!("Failed to read audio: {}", e))?;
     
-    // Store in cache
     {
         let mut cache = state.audio_cache.lock().unwrap();
         cache.insert(video_id.clone(), bytes.to_vec());
@@ -862,10 +830,8 @@ fn update_media_metadata(
 ) -> Result<(), String> {
     if let Some(controls_arc) = MEDIA_CONTROLS.get() {
         if let Ok(mut controls) = controls_arc.lock() {
-            // First set playback to playing to activate SMTC
             let _ = controls.set_playback(MediaPlayback::Playing { progress: None });
             
-            // Then set metadata
             controls.set_metadata(MediaMetadata {
                 title: Some(&title),
                 artist: Some(&artist),
@@ -893,6 +859,7 @@ fn update_media_playback(is_playing: bool) -> Result<(), String> {
     Ok(())
 }
 
+
 #[tauri::command]
 fn update_discord_presence(
     title: String,
@@ -905,21 +872,16 @@ fn update_discord_presence(
 ) -> Result<(), String> {
     if let Some(client_arc) = DISCORD_CLIENT.get() {
         if let Ok(mut client_opt) = client_arc.lock() {
-            // Try to reconnect if not connected
             if client_opt.is_none() {
                 *client_opt = init_discord_rpc();
             }
             
             if let Some(client) = client_opt.as_mut() {
-                // Calculate timestamps for progress bar
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
                     .as_secs() as i64;
                 
-                // Build activity - Spotify-like format
-                // Details = Song title (with Paused if paused)
-                // State = Artist name
                 let details_text = if is_playing {
                     title.clone()
                 } else {
@@ -931,7 +893,6 @@ fn update_discord_presence(
                     .details(&details_text)
                     .state(&artist);
                 
-                // Always add timestamps for progress bar
                 let start_time = if let Some(elapsed) = elapsed_secs {
                     now - elapsed
                 } else {
@@ -948,7 +909,6 @@ fn update_discord_presence(
                 };
                 act = act.timestamps(timestamps);
                 
-                // Add album art as large image, VYRA logo as small
                 let large_image = thumbnail.as_deref().unwrap_or("vyra_logo");
                 let assets = activity::Assets::new()
                     .large_image(large_image)
@@ -957,9 +917,8 @@ fn update_discord_presence(
                     .small_text("VYRA");
                 act = act.assets(assets);
                 
-                // Add buttons - Download VYRA (Discord only supports HTTPS URLs)
                 let buttons = vec![
-                    activity::Button::new("Download VYRA", "https://github.com/HasibulHasan098/VYRA-MUSIC/releases"),
+                    activity::Button::new("Download VYRA", "https://vyra.fasthand.study/"),
                 ];
                 act = act.buttons(buttons);
                 
@@ -983,10 +942,130 @@ fn clear_discord_presence() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn set_global_shortcuts(
+    app: tauri::AppHandle,
+    enabled: bool,
+    shortcuts: HashMap<String, String>,
+) -> Result<(), String> {
+    use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+    
+    let _ = app.global_shortcut().unregister_all();
+    
+    if !enabled {
+        return Ok(());
+    }
+    
+    fn convert_key_format(key: &str) -> String {
+        key.replace("Up", "ArrowUp")
+           .replace("Down", "ArrowDown")
+           .replace("Left", "ArrowLeft")
+           .replace("Right", "ArrowRight")
+    }
+    
+    if let Some(key) = shortcuts.get("playPause") {
+        if !key.is_empty() {
+            let converted = convert_key_format(key);
+            if let Ok(shortcut) = converted.parse::<Shortcut>() {
+                let handle = app.clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.emit("media-control", "play_pause");
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    if let Some(key) = shortcuts.get("next") {
+        if !key.is_empty() {
+            let converted = convert_key_format(key);
+            if let Ok(shortcut) = converted.parse::<Shortcut>() {
+                let handle = app.clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.emit("media-control", "next");
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    if let Some(key) = shortcuts.get("previous") {
+        if !key.is_empty() {
+            let converted = convert_key_format(key);
+            if let Ok(shortcut) = converted.parse::<Shortcut>() {
+                let handle = app.clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.emit("media-control", "prev");
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    if let Some(key) = shortcuts.get("volumeUp") {
+        if !key.is_empty() {
+            let converted = convert_key_format(key);
+            if let Ok(shortcut) = converted.parse::<Shortcut>() {
+                let handle = app.clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.emit("media-control", "volume_up");
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    if let Some(key) = shortcuts.get("volumeDown") {
+        if !key.is_empty() {
+            let converted = convert_key_format(key);
+            if let Ok(shortcut) = converted.parse::<Shortcut>() {
+                let handle = app.clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.emit("media-control", "volume_down");
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    if let Some(key) = shortcuts.get("mute") {
+        if !key.is_empty() {
+            let converted = convert_key_format(key);
+            if let Ok(shortcut) = converted.parse::<Shortcut>() {
+                let handle = app.clone();
+                let _ = app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.emit("media-control", "mute");
+                        }
+                    }
+                });
+            }
+        }
+    }
+    
+    Ok(())
+}
+
+
+#[tauri::command]
 async fn check_for_updates(
     state: State<'_, AppState>,
 ) -> Result<Value, String> {
-    // Fetch latest release from GitHub
     let response = state
         .client
         .get("https://api.github.com/repos/HasibulHasan098/VYRA-MUSIC/releases/latest")
@@ -1001,7 +1080,6 @@ async fn check_for_updates(
         return Ok(release);
     }
     
-    // If /latest fails, try to get all releases
     let response = state
         .client
         .get("https://api.github.com/repos/HasibulHasan098/VYRA-MUSIC/releases")
@@ -1032,7 +1110,6 @@ async fn download_and_install_update(
     use std::io::Write;
     use std::process::Command;
     
-    // Download the update file
     let response = state
         .client
         .get(&url)
@@ -1047,24 +1124,19 @@ async fn download_and_install_update(
     
     let bytes = response.bytes().await.map_err(|e| format!("Failed to read update file: {}", e))?;
     
-    // Get temp directory
     let temp_dir = std::env::temp_dir();
     let file_name = url.split('/').last().unwrap_or("VYRA_update.exe");
     let update_path = temp_dir.join(file_name);
     
-    // Write the update file
     let mut file = std::fs::File::create(&update_path)
         .map_err(|e| format!("Failed to create update file: {}", e))?;
     file.write_all(&bytes)
         .map_err(|e| format!("Failed to write update file: {}", e))?;
     
-    // Explicitly close the file before running installer
     drop(file);
     
-    // Small delay to ensure file is fully released
     std::thread::sleep(std::time::Duration::from_millis(500));
     
-    // Run the installer
     #[cfg(target_os = "windows")]
     {
         Command::new(&update_path)
@@ -1074,14 +1146,12 @@ async fn download_and_install_update(
     
     #[cfg(not(target_os = "windows"))]
     {
-        // On non-Windows, just open the file location
         open::that(temp_dir).map_err(|e| format!("Failed to open download location: {}", e))?;
     }
     
     Ok(())
 }
 
-// Start audio proxy server with cache support
 async fn start_audio_proxy_with_cache(
     stream_urls: Arc<Mutex<HashMap<String, String>>>,
     audio_cache: Arc<Mutex<HashMap<String, Vec<u8>>>>,
@@ -1101,7 +1171,7 @@ async fn start_audio_proxy_with_cache(
 
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_methods(vec!["GET", "OPTIONS"])
+        .allow_methods(vec!["GET", "POST", "OPTIONS"])
         .allow_headers(vec!["Range", "Content-Type"])
         .expose_headers(vec!["Content-Length", "Content-Range", "Accept-Ranges"]);
 
@@ -1109,6 +1179,7 @@ async fn start_audio_proxy_with_cache(
 
     warp::serve(routes).run(([127, 0, 0, 1], 9876)).await;
 }
+
 
 async fn handle_audio_proxy_with_cache(
     video_id: String,
@@ -1123,7 +1194,6 @@ async fn handle_audio_proxy_with_cache(
         if let Some(cached_data) = cache.get(&video_id) {
             let total_len = cached_data.len();
             
-            // Handle range requests for cached data
             if let Some(range_header) = &range {
                 if let Some(range_str) = range_header.strip_prefix("bytes=") {
                     let parts: Vec<&str> = range_str.split('-').collect();
@@ -1150,7 +1220,6 @@ async fn handle_audio_proxy_with_cache(
                 }
             }
             
-            // Return full cached data
             return Ok(warp::http::Response::builder()
                 .status(200)
                 .header("Content-Type", "audio/webm")
@@ -1168,23 +1237,20 @@ async fn handle_audio_proxy_with_cache(
     };
 
     if let Some(url) = url {
-        // Parse the range request and limit it for faster initial load
         let fetch_range = match &range {
-            None => Some("bytes=0-262143".to_string()), // First 256KB if no range
+            None => Some("bytes=0-262143".to_string()),
             Some(r) => {
-                // Parse range like "bytes=0-" or "bytes=0-1000"
                 if let Some(range_str) = r.strip_prefix("bytes=") {
                     let parts: Vec<&str> = range_str.split('-').collect();
                     if parts.len() == 2 {
                         let start: u64 = parts[0].parse().unwrap_or(0);
                         let end: Option<u64> = if parts[1].is_empty() {
-                            None // Open-ended range like "bytes=0-"
+                            None
                         } else {
                             parts[1].parse().ok()
                         };
                         
-                        // If open-ended or requesting more than 512KB, limit to 512KB chunk
-                        let chunk_size: u64 = 524288; // 512KB
+                        let chunk_size: u64 = 524288;
                         let actual_end = match end {
                             Some(e) if e - start <= chunk_size => e,
                             _ => start + chunk_size - 1,
@@ -1231,8 +1297,6 @@ async fn handle_audio_proxy_with_cache(
 
                 match response.bytes().await {
                     Ok(bytes) => {
-                        // Always return 206 Partial Content when we fetched a range
-                        // This tells the browser to request more data
                         let response_status = if fetch_range.is_some() { 206 } else { status.as_u16() };
 
                         let mut builder = warp::http::Response::builder()
@@ -1272,6 +1336,7 @@ async fn handle_audio_proxy_with_cache(
     }
 }
 
+
 fn main() {
     let client = Client::builder()
         .build()
@@ -1292,7 +1357,6 @@ fn main() {
             }
         };
         rt.block_on(async {
-            // Small delay to ensure main app is ready
             tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
             start_audio_proxy_with_cache(stream_urls_for_proxy, audio_cache_for_proxy, client_for_proxy).await;
         });
@@ -1302,25 +1366,22 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // When a second instance is launched, show and focus the existing window
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
         }))
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .setup(|app| {
-            // Initialize Windows media controls (SMTC)
             let app_handle = app.handle().clone();
-            if let Some(controls) = init_media_controls(app_handle) {
+            if let Some(controls) = init_media_controls(app_handle.clone()) {
                 let _ = MEDIA_CONTROLS.set(controls);
             }
             
-            // Initialize Discord RPC
             let discord_client = init_discord_rpc();
             let _ = DISCORD_CLIENT.set(Arc::new(Mutex::new(discord_client)));
             
-            // Create system tray with media controls
             let prev = MenuItem::with_id(app, "prev", "⏮ Previous", true, None::<&str>)?;
             let play_pause = MenuItem::with_id(app, "play_pause", "⏯ Play/Pause", true, None::<&str>)?;
             let next = MenuItem::with_id(app, "next", "⏭ Next", true, None::<&str>)?;
@@ -1399,6 +1460,7 @@ fn main() {
             update_media_playback,
             update_discord_presence,
             clear_discord_presence,
+            set_global_shortcuts,
             check_for_updates,
             download_and_install_update
         ])

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Loader2, Play, Music, ListMusic } from 'lucide-react'
+import { Loader2, Play, Pause, Music, ListMusic } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore } from '../store/playerStore'
 import TrackRow from './TrackRow'
@@ -134,7 +134,7 @@ function SearchPlaylistCard({ playlist, onClick }: { playlist: PlaylistItem; onC
 
 export default function SearchResults() {
   const { darkMode, searchQuery, searchResults, isLoadingSearch, openArtist, openAlbum, openPlaylist } = useAppStore()
-  const { setQueue, setCurrentTrack } = usePlayerStore()
+  const { setQueue, setCurrentTrack, currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const [activeTab, setActiveTab] = useState<FilterTab>('all')
 
   const tabs: { id: FilterTab; label: string }[] = [
@@ -250,17 +250,26 @@ export default function SearchResults() {
                     </p>
                     
                     {/* Play button */}
-                    <Tooltip text="Play" position="left">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation()
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        if (currentTrack?.id === topResult.id) {
+                          // Same track - toggle play/pause
+                          togglePlay()
+                        } else {
+                          // Different track - start playing
                           setQueue(searchResults.songs, 0)
-                        }}
-                        className="absolute bottom-fib-21 right-fib-21 w-fib-55 h-fib-55 rounded-full bg-ios-blue flex items-center justify-center shadow-ios-lg opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 ios-transition"
-                      >
+                        }
+                      }}
+                      title={currentTrack?.id === topResult.id && isPlaying ? "Pause" : "Play"}
+                      className="absolute bottom-fib-21 right-fib-21 w-fib-55 h-fib-55 rounded-full bg-ios-blue flex items-center justify-center shadow-ios-lg opacity-0 group-hover:opacity-100 translate-y-2 group-hover:translate-y-0 ios-transition ios-active"
+                    >
+                      {currentTrack?.id === topResult.id && isPlaying ? (
+                        <Pause size={24} fill="white" className="text-white" />
+                      ) : (
                         <Play size={24} fill="white" className="text-white ml-1" />
-                      </button>
-                    </Tooltip>
+                      )}
+                    </button>
                   </div>
                 </section>
               )}

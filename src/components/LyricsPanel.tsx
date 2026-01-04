@@ -223,15 +223,7 @@ export default function LyricsPanel() {
 
   const { r, g, b } = dominantColor
   
-  // Calculate if we need to ensure contrast
-  const brightness = (r * 299 + g * 587 + b * 114) / 1000
-  
-  // For light colors, use the color as-is for glow but ensure text is readable
-  // For dark colors, brighten for visibility
   const accentColor = `rgb(${r}, ${g}, ${b})`
-  const accentColorBright = brightness > 150 
-    ? `rgb(${Math.max(100, r - 30)}, ${Math.max(100, g - 30)}, ${Math.max(120, b - 20)})` // Darken for light themes
-    : `rgb(${Math.min(255, r + 80)}, ${Math.min(255, g + 80)}, ${Math.min(255, b + 80)})` // Brighten for dark themes
 
   // Different backgrounds for dark/light mode
   const backgroundStyle = darkMode ? {
@@ -246,18 +238,17 @@ export default function LyricsPanel() {
       rgb(245, 245, 250) 100%)`,
   }
 
-  // Text colors for light/dark mode
-  const textColorPast = darkMode ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.25)'
-  const textColorUpcoming = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.4)'
-  const textColorRevealed = darkMode ? accentColorBright : `rgb(${Math.max(0, r - 40)}, ${Math.max(0, g - 40)}, ${Math.max(0, b - 40)})`
-  const textColorUnrevealed = darkMode ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.25)'
+  // Text colors - white for dark mode
+  const textColorRevealed = darkMode ? '#ffffff' : `rgb(${Math.max(0, r - 40)}, ${Math.max(0, g - 40)}, ${Math.max(0, b - 40)})`
+  const textColorUnrevealed = darkMode ? 'rgba(255, 255, 255, 0.5)' : 'rgba(0, 0, 0, 0.5)'
   
-  // More aggressive glow
+  // Glow using album color
+  const glowColor = `rgb(${Math.min(255, r + 50)}, ${Math.min(255, g + 50)}, ${Math.min(255, b + 50)})`
   const glowStyle = darkMode 
-    ? `0 0 30px ${accentColor}, 0 0 60px ${accentColor}, 0 0 90px ${accentColor}` 
-    : `0 0 25px ${accentColor}, 0 0 50px ${accentColor}, 0 0 80px rgba(${r}, ${g}, ${b}, 0.6)`
+    ? `0 0 10px ${glowColor}, 0 0 20px ${glowColor}, 0 0 40px ${accentColor}` 
+    : `0 0 15px ${accentColor}, 0 0 30px ${accentColor}`
 
-  // Render animated text with karaoke-style fill
+  // Render animated text with karaoke-style fill and subtle wave
   const renderAnimatedText = useCallback((text: string, isCurrentLine: boolean, prog: number) => {
     if (!isCurrentLine) {
       return <span>{text}</span>
@@ -270,6 +261,8 @@ export default function LyricsPanel() {
       <>
         {chars.map((char, i) => {
           const isRevealed = i < revealedCount
+          // Subtle wave animation - each character has a slight delay
+          const waveDelay = i * 0.05 // 50ms delay between each character
           
           return (
             <span
@@ -277,12 +270,21 @@ export default function LyricsPanel() {
               style={{
                 color: isRevealed ? textColorRevealed : textColorUnrevealed,
                 textShadow: isRevealed ? glowStyle : 'none',
+                display: 'inline-block',
+                animation: isRevealed ? `subtleWave 2s ease-in-out infinite` : 'none',
+                animationDelay: `${waveDelay}s`,
               }}
             >
-              {char}
+              {char === ' ' ? '\u00A0' : char}
             </span>
           )
         })}
+        <style>{`
+          @keyframes subtleWave {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-2px); }
+          }
+        `}</style>
       </>
     )
   }, [textColorRevealed, textColorUnrevealed, glowStyle])
@@ -340,10 +342,14 @@ export default function LyricsPanel() {
                 className="py-2 cursor-pointer font-bold leading-snug"
                 style={{
                   fontSize: isCurrentLine ? '2rem' : '1.5rem',
-                  color: isPastLine ? textColorPast : isCurrentLine ? undefined : textColorUpcoming,
+                  color: darkMode ? '#ffffff' : '#000000',
+                  opacity: isPastLine ? 0.33 : isCurrentLine ? 1 : 0.66,
+                  filter: isPastLine ? 'blur(2.5px)' : 'blur(0px)',
                   transform: isCurrentLine ? 'scale(1.02)' : 'scale(1)',
                   transformOrigin: 'left center',
-                  transition: 'transform 0.3s ease, font-size 0.3s ease',
+                  transition: isPastLine 
+                    ? 'filter 0.5s 0.35s, opacity 0.5s 0.35s, transform 0.166s ease, font-size 0.3s ease' 
+                    : 'filter 0.5s 0s, opacity 0.5s 0s, transform 0.166s ease, font-size 0.3s ease',
                   paddingLeft: '4px',
                 }}
               >

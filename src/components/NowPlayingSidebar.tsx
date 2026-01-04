@@ -29,7 +29,7 @@ export default function NowPlayingSidebar() {
     
     return (
       <aside className={`w-[70px] flex-shrink-0 border-l flex flex-col items-center pt-fib-13 gap-fib-8 overflow-y-auto
-        ${darkMode ? 'bg-ios-card-dark border-ios-separator-dark' : 'bg-ios-card border-ios-separator'}`}>
+        ${darkMode ? 'bg-transparent border-ios-separator-dark' : 'bg-transparent border-ios-separator'}`}>
         
         {/* Expand button */}
         <Tooltip text="Expand Now Playing" position="left">
@@ -86,7 +86,7 @@ export default function NowPlayingSidebar() {
 
   return (
     <aside className={`w-[300px] flex-shrink-0 border-l overflow-y-auto relative
-      ${darkMode ? 'bg-ios-card-dark border-ios-separator-dark' : 'bg-ios-card border-ios-separator'}`}>
+      ${darkMode ? 'bg-transparent border-ios-separator-dark' : 'bg-transparent border-ios-separator'}`}>
       
       {/* Header - Artist name and collapse button on same row */}
       <div className="flex items-center justify-between p-fib-13">

@@ -616,21 +616,40 @@ function DownloadedTrackRow({
   darkMode: boolean
   onDelete: () => void
 }) {
-  const { setQueue } = usePlayerStore()
+  const { setQueue, currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const [showDelete, setShowDelete] = useState(false)
+  const isActive = currentTrack?.id === track.id
+
+  const handleClick = () => {
+    if (isActive) {
+      togglePlay()
+    } else {
+      setQueue(allTracks, index)
+    }
+  }
 
   return (
     <div 
       className={`group flex items-center gap-fib-13 p-fib-8 rounded-fib-8 ios-active ios-transition cursor-pointer
-        ${darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'}`}
-      onClick={() => setQueue(allTracks, index)}
+        ${isActive ? (darkMode ? 'bg-ios-blue/20' : 'bg-ios-blue/10') : (darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5')}`}
+      onClick={handleClick}
       onMouseEnter={() => setShowDelete(true)}
       onMouseLeave={() => setShowDelete(false)}
     >
       {/* Index / Play indicator */}
-      <span className="w-fib-21 text-center text-fib-13 text-ios-gray">
-        {index + 1}
-      </span>
+      <div className="w-fib-21 text-center flex-shrink-0">
+        {isActive && isPlaying ? (
+          <div className="flex items-center justify-center gap-0.5">
+            <span className="w-0.5 h-2 bg-ios-blue rounded-full animate-pulse" />
+            <span className="w-0.5 h-3 bg-ios-blue rounded-full animate-pulse" style={{ animationDelay: '75ms' }} />
+            <span className="w-0.5 h-2 bg-ios-blue rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
+          </div>
+        ) : (
+          <span className={`text-fib-13 ${isActive ? 'text-ios-blue' : 'text-ios-gray'}`}>
+            {index + 1}
+          </span>
+        )}
+      </div>
       
       {/* Thumbnail */}
       <div className="w-fib-34 h-fib-34 rounded-fib-5 overflow-hidden flex-shrink-0">
@@ -643,7 +662,7 @@ function DownloadedTrackRow({
       
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className={`text-fib-13 font-medium truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+        <p className={`text-fib-13 font-medium truncate ${isActive ? 'text-ios-blue' : (darkMode ? 'text-white' : 'text-black')}`}>
           {track.title}
         </p>
         <p className="text-fib-13 text-ios-gray truncate">

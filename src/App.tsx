@@ -16,6 +16,34 @@ const initAccentColor = () => {
   }
 }
 initAccentColor()
+
+// Initialize global shortcuts on app load
+const initGlobalShortcuts = async () => {
+  if (typeof window !== 'undefined' && window.__TAURI__) {
+    const stored = localStorage.getItem('metrolist-settings')
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored)
+        const enabled = parsed.state?.globalKeybindsEnabled || false
+        const shortcuts = parsed.state?.globalKeybinds || {
+          playPause: 'Ctrl+Space',
+          next: 'Ctrl+Right',
+          previous: 'Ctrl+Left',
+          volumeUp: 'Ctrl+Up',
+          volumeDown: 'Ctrl+Down',
+          mute: 'Ctrl+M',
+        }
+        
+        const { invoke } = await import('@tauri-apps/api/core')
+        await invoke('set_global_shortcuts', { enabled, shortcuts })
+      } catch (e) {
+        console.error('Failed to initialize global shortcuts:', e)
+      }
+    }
+  }
+}
+initGlobalShortcuts()
+
 import Sidebar from './components/Sidebar'
 import TitleBar from './components/TitleBar'
 import Player from './components/Player'
@@ -41,8 +69,11 @@ export default function App() {
   const isMiniPlayer = window.location.hash === '#miniplayer'
 
   // Expose fullscreen toggle globally for Player component
+  // Uses CSS overlay fullscreen - simpler and more reliable
   useEffect(() => {
-    (window as any).toggleFullscreenPlayer = () => setIsFullscreen(prev => !prev)
+    (window as any).toggleFullscreenPlayer = () => {
+      setIsFullscreen(prev => !prev)
+    }
     return () => {
       delete (window as any).toggleFullscreenPlayer
     }
@@ -132,8 +163,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDown, true)
   }, [inAppKeybinds, togglePlay, nextTrack, prevTrack, setVolume, volume, currentTrack, toggleLike, toggleLyrics])
 
-  // Restore playback state on app start
+  // Restore playback state on app start (only for main window)
   useEffect(() => {
+    // Skip audio initialization for mini player window
+    // It shares state with main window via Zustand store
+    if (isMiniPlayer) return
+    
     initAudio()
     
     // Restore saved track after a short delay to ensure store is hydrated
@@ -148,6 +183,25 @@ export default function App() {
     
     window.addEventListener('beforeunload', handleBeforeUnload)
     
+    // Listen for storage events to sync state from other windows (fullscreen, miniplayer)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'metrolist-player') {
+        try {
+          const newState = JSON.parse(e.newValue || '{}')
+          const { audioElement } = usePlayerStore.getState()
+          if (audioElement && newState.state) {
+            // Sync volume
+            if (typeof newState.state.volume === 'number') {
+              audioElement.volume = newState.state.volume
+            }
+          }
+        } catch {
+          // Ignore parse errors
+        }
+      }
+    }
+    window.addEventListener('storage', handleStorageChange)
+    
     // Listen for media control events from system tray
     let unlisten: (() => void) | undefined
     
@@ -155,6 +209,7 @@ export default function App() {
       if (typeof window !== 'undefined' && window.__TAURI__) {
         const { listen } = await import('@tauri-apps/api/event')
         unlisten = await listen<string>('media-control', (event) => {
+          const { togglePlay, nextTrack, prevTrack, setVolume, volume, audioElement } = usePlayerStore.getState()
           switch (event.payload) {
             case 'prev':
               prevTrack()
@@ -169,16 +224,51 @@ export default function App() {
             case 'next':
               nextTrack()
               break
+            case 'volume_up':
+              setVolume(Math.min(1, volume + 0.1))
+              break
+            case 'volume_down':
+              setVolume(Math.max(0, volume - 0.1))
+              break
+            case 'mute':
+              setVolume(volume > 0 ? 0 : 0.5)
+              break
             case 'stop':
-              // Stop playback
-              const audio = usePlayerStore.getState().audioElement
-              if (audio) {
-                audio.pause()
-                audio.currentTime = 0
+              if (audioElement) {
+                audioElement.pause()
+                audioElement.currentTime = 0
               }
               break
           }
         })
+        
+        // Listen for seek events from fullscreen window
+        const unlistenSeek = await listen<number>('seek-to', (event) => {
+          const { audioElement } = usePlayerStore.getState()
+          if (audioElement && typeof event.payload === 'number') {
+            audioElement.currentTime = event.payload
+          }
+        })
+        
+        // Listen for volume events from fullscreen window
+        const unlistenVolume = await listen<number>('set-volume', (event) => {
+          const { audioElement } = usePlayerStore.getState()
+          if (typeof event.payload === 'number') {
+            const vol = Math.max(0, Math.min(1, event.payload))
+            if (audioElement) {
+              audioElement.volume = vol
+            }
+            usePlayerStore.setState({ volume: vol })
+          }
+        })
+        
+        // Store all unlisteners
+        const originalUnlisten = unlisten
+        unlisten = () => {
+          originalUnlisten?.()
+          unlistenSeek()
+          unlistenVolume()
+        }
       }
     }
     
@@ -187,9 +277,43 @@ export default function App() {
     return () => {
       clearTimeout(timer)
       window.removeEventListener('beforeunload', handleBeforeUnload)
+      window.removeEventListener('storage', handleStorageChange)
       if (unlisten) unlisten()
     }
-  }, [])
+  }, [isMiniPlayer])
+
+  // Broadcast player state to other windows (miniplayer)
+  useEffect(() => {
+    if (isMiniPlayer) return
+    if (typeof window === 'undefined' || !window.__TAURI__) return
+    
+    let broadcastInterval: ReturnType<typeof setInterval>
+    
+    const startBroadcast = async () => {
+      const { emit } = await import('@tauri-apps/api/event')
+      
+      // Broadcast at 30ms for ultra-smooth lyrics animation (33fps)
+      broadcastInterval = setInterval(() => {
+        const state = usePlayerStore.getState()
+        const audio = state.audioElement
+        emit('player-state-update', {
+          // Send actual current time for precise lyrics sync
+          currentTime: audio?.currentTime || 0,
+          progress: state.progress,
+          duration: state.duration,
+          isPlaying: state.isPlaying,
+          volume: state.volume,
+          currentTrackId: state.currentTrack?.id || null,
+        })
+      }, 30)
+    }
+    
+    startBroadcast()
+    
+    return () => {
+      if (broadcastInterval) clearInterval(broadcastInterval)
+    }
+  }, [isMiniPlayer])
 
   // Periodically save position while playing
   useEffect(() => {

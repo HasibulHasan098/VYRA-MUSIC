@@ -252,41 +252,46 @@ export const usePlayerStore = create<PlayerState>()(
       }
     })
     
-    audio.addEventListener('ended', async () => {
-      const { repeat, nextTrack, currentTrack } = get()
-      
-      // Cache the song that just finished playing
-      if (currentTrack) {
-        const { useAppStore } = await import('./appStore')
-        const { addToCache, cacheEnabled } = useAppStore.getState()
-        if (cacheEnabled) {
-          // Call Tauri to cache the audio data
-          if (typeof window !== 'undefined' && window.__TAURI__) {
-            const { invoke } = await import('@tauri-apps/api/core')
-            try {
-              await invoke('cache_audio', { videoId: currentTrack.id })
-              addToCache(currentTrack)
-            } catch {
-              // Silently fail caching
-            }
-          }
-        }
-      }
+    audio.addEventListener('ended', () => {
+      const { repeat, nextTrack, currentTrack, queue, queueIndex } = get()
       
       if (repeat === 'one') {
         audio.currentTime = 0
         audio.play()
-      } else {
-        // Check if autoplay is enabled
-        const { useAppStore } = await import('./appStore')
+        return
+      }
+      
+      // Check if autoplay is enabled - do this synchronously
+      import('./appStore').then(({ useAppStore }) => {
         const autoplayEnabled = useAppStore.getState().autoplayEnabled
         
         if (autoplayEnabled) {
+          // Play next track immediately
           nextTrack()
+          
+          // Extend queue in background if needed
+          const upcomingSongs = queue.length - queueIndex - 1
+          if (upcomingSongs <= 2 && currentTrack) {
+            extendQueue(currentTrack.id, get, set)
+          }
         } else {
           // Autoplay disabled - stop and wait for user
           set({ isPlaying: false })
         }
+      })
+      
+      // Cache the finished song in background (don't block next track)
+      if (currentTrack) {
+        import('./appStore').then(({ useAppStore }) => {
+          const { addToCache, cacheEnabled } = useAppStore.getState()
+          if (cacheEnabled && typeof window !== 'undefined' && window.__TAURI__) {
+            import('@tauri-apps/api/core').then(({ invoke }) => {
+              invoke('cache_audio', { videoId: currentTrack.id })
+                .then(() => addToCache(currentTrack))
+                .catch(() => {}) // Silently fail
+            })
+          }
+        })
       }
     })
     
@@ -581,14 +586,21 @@ export const usePlayerStore = create<PlayerState>()(
     
     let nextIndex: number
     if (shuffle) {
-      nextIndex = Math.floor(Math.random() * queue.length)
+      // In shuffle mode, pick a random track that's not the current one
+      if (queue.length > 1) {
+        do {
+          nextIndex = Math.floor(Math.random() * queue.length)
+        } while (nextIndex === queueIndex)
+      } else {
+        nextIndex = 0
+      }
     } else {
       nextIndex = queueIndex + 1
       if (nextIndex >= queue.length) {
         if (repeat === 'all') {
           nextIndex = 0
         } else {
-          // Queue ended - check if autoplay is enabled
+          // Queue ended - check if autoplay is enabled to fetch more songs
           const { useAppStore } = await import('./appStore')
           const autoplayEnabled = useAppStore.getState().autoplayEnabled
           
@@ -602,8 +614,9 @@ export const usePlayerStore = create<PlayerState>()(
                 
                 if (newSongs.length > 0) {
                   // Add new songs to queue and play the first one
-                  set({ queue: [...queue, ...newSongs], queueIndex: queue.length })
-                  get().setCurrentTrack(newSongs[0])
+                  const newQueue = [...queue, ...newSongs]
+                  set({ queue: newQueue, queueIndex: queue.length })
+                  await get().setCurrentTrack(newSongs[0])
                   return
                 }
               }
@@ -611,6 +624,7 @@ export const usePlayerStore = create<PlayerState>()(
               // Silently fail - just stop playback
             }
           }
+          // No more songs to play
           set({ isPlaying: false })
           return
         }
@@ -618,7 +632,7 @@ export const usePlayerStore = create<PlayerState>()(
     }
     
     set({ queueIndex: nextIndex })
-    get().setCurrentTrack(queue[nextIndex])
+    await get().setCurrentTrack(queue[nextIndex])
   },
 
   prevTrack: () => {
@@ -689,7 +703,7 @@ export const usePlayerStore = create<PlayerState>()(
   },
 
   restorePlayback: async () => {
-    const { currentTrack, initAudio } = get()
+    const { currentTrack, initAudio, savedPosition } = get()
     
     // Initialize audio element first
     initAudio()
@@ -699,7 +713,16 @@ export const usePlayerStore = create<PlayerState>()(
     if (currentTrack) {
       // Track is already in state from persist, just ensure UI shows it
       // Don't call setCurrentTrack - that would try to fetch stream
-      set({ isLoading: false, error: null, isPlaying: false })
+      // Calculate progress from saved position and track duration
+      const trackDuration = currentTrack.duration || 0
+      const restoredProgress = trackDuration > 0 ? savedPosition / trackDuration : 0
+      set({ 
+        isLoading: false, 
+        error: null, 
+        isPlaying: false,
+        duration: trackDuration,
+        progress: Math.min(restoredProgress, 1) // Ensure progress doesn't exceed 1
+      })
     }
   }
     }),

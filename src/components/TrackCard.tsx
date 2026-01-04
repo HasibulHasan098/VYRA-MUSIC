@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Play, MoreHorizontal, Music } from 'lucide-react'
+import { Play, Pause, MoreHorizontal, Music } from 'lucide-react'
 import { Song, usePlayerStore } from '../store/playerStore'
 import { useAppStore } from '../store/appStore'
 import Tooltip from './Tooltip'
@@ -36,7 +36,7 @@ const getColorFromTitle = (title: string): string => {
 }
 
 export default function TrackCard({ track, showArtist = true, allTracks, index = 0 }: TrackCardProps) {
-  const { setCurrentTrack, setQueue, currentTrack, isPlaying } = usePlayerStore()
+  const { setCurrentTrack, setQueue, currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const { darkMode } = useAppStore()
   const isActive = currentTrack?.id === track.id
   const [imgError, setImgError] = useState(false)
@@ -44,7 +44,9 @@ export default function TrackCard({ track, showArtist = true, allTracks, index =
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null)
 
   const handleClick = () => {
-    if (allTracks && allTracks.length > 0) {
+    if (isActive) {
+      togglePlay()
+    } else if (allTracks && allTracks.length > 0) {
       setQueue(allTracks, index)
     } else {
       setCurrentTrack(track)
@@ -101,11 +103,7 @@ export default function TrackCard({ track, showArtist = true, allTracks, index =
             ${isActive && isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
             <div className="w-fib-34 h-fib-34 rounded-full bg-ios-blue flex items-center justify-center shadow-ios-lg">
               {isActive && isPlaying ? (
-                <div className="flex items-center gap-0.5">
-                  <span className="w-0.5 h-3 bg-white rounded-full animate-pulse" />
-                  <span className="w-0.5 h-4 bg-white rounded-full animate-pulse" style={{ animationDelay: '75ms' }} />
-                  <span className="w-0.5 h-2 bg-white rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                </div>
+                <Pause size={18} fill="white" className="text-white" />
               ) : (
                 <Play size={21} fill="white" className="text-white ml-1" />
               )}

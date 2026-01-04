@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Heart, ListMusic, Loader2, Music, Minimize2, Mic2 } from 'lucide-react'
 import { usePlayerStore } from '../store/playerStore'
 import { useAppStore } from '../store/appStore'
@@ -55,12 +55,68 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
   const [lyricsLoading, setLyricsLoading] = useState(false)
   const [currentLineIndex, setCurrentLineIndex] = useState(-1)
   const [lineProgress, setLineProgress] = useState(0)
-  const [currentTime, setCurrentTime] = useState(0)
   const imgRef = useRef<HTMLImageElement>(null)
   const lyricsContainerRef = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<(HTMLDivElement | null)[]>([])
 
+  // Enter true fullscreen (hides taskbar) when mounted
+  useEffect(() => {
+    const enterFullscreen = async () => {
+      if (typeof window !== 'undefined' && '__TAURI__' in window) {
+        try {
+          const { getCurrentWindow } = await import('@tauri-apps/api/window')
+          const win = getCurrentWindow()
+          // Small delay to ensure component is rendered
+          await new Promise(r => setTimeout(r, 100))
+          await win.setFullscreen(true)
+        } catch (e) {
+          console.error('Fullscreen error:', e)
+        }
+      }
+    }
+    
+    enterFullscreen()
+    
+    return () => {
+      // Exit fullscreen when component unmounts
+      if (typeof window !== 'undefined' && '__TAURI__' in window) {
+        import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+          getCurrentWindow().setFullscreen(false).catch(() => {})
+        }).catch(() => {})
+      }
+    }
+  }, [])
+
   const trackIsLiked = currentTrack ? isLiked(currentTrack.id) : false
+
+  // Control handlers - direct access to audio element (same window)
+  const handleTogglePlay = useCallback(() => {
+    togglePlay()
+  }, [togglePlay])
+
+  const handleNextTrack = useCallback(() => {
+    nextTrack()
+  }, [nextTrack])
+
+  const handlePrevTrack = useCallback(() => {
+    prevTrack()
+  }, [prevTrack])
+
+  const handleToggleShuffle = useCallback(() => {
+    toggleShuffle()
+  }, [toggleShuffle])
+
+  const handleCycleRepeat = useCallback(() => {
+    cycleRepeat()
+  }, [cycleRepeat])
+
+  const handleSetVolume = useCallback((vol: number) => {
+    setVolume(vol)
+  }, [setVolume])
+
+  const handleToggleMute = useCallback(() => {
+    setVolume(volume > 0 ? 0 : 0.8)
+  }, [volume, setVolume])
 
   useEffect(() => {
     setImgError(false)
@@ -87,62 +143,73 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
     loadLyrics()
   }, [currentTrack?.id, duration])
 
-  // High-frequency time update for smooth animation
+  // High-frequency animation loop for smooth lyrics
+  // Direct access to audioElement - same window, no IPC
+  const lineProgressRef = useRef(0)
+  const lastProgressUpdateRef = useRef(0)
+  const stableLineIndexRef = useRef(-1)
+  
   useEffect(() => {
-    if (!audioElement || !showLyrics) return
-
-    const updateTime = () => {
-      setCurrentTime(audioElement.currentTime)
-    }
-
-    audioElement.addEventListener('timeupdate', updateTime)
-    const interval = setInterval(updateTime, 50)
-
-    return () => {
-      audioElement.removeEventListener('timeupdate', updateTime)
-      clearInterval(interval)
-    }
-  }, [audioElement, showLyrics])
-
-  // Calculate current line and progress
-  const { calculatedLineIndex, calculatedProgress } = useMemo(() => {
-    if (!lyrics?.syncedLyrics || currentTime <= 0) {
-      return { calculatedLineIndex: -1, calculatedProgress: 0 }
-    }
-
-    let lineIdx = -1
-    let nextLineTime = duration || currentTime + 10
+    if (!showLyrics || !lyrics?.syncedLyrics || !audioElement) return
     
-    for (let i = lyrics.syncedLyrics.length - 1; i >= 0; i--) {
-      if (currentTime >= lyrics.syncedLyrics[i].time) {
-        lineIdx = i
-        if (i < lyrics.syncedLyrics.length - 1) {
-          nextLineTime = lyrics.syncedLyrics[i + 1].time
+    let animationId: number
+    
+    const animate = () => {
+      const time = audioElement.currentTime
+      const dur = audioElement.duration || duration || 1
+      const now = performance.now()
+      
+      // Calculate current line based on time
+      let lineIdx = -1
+      let nextLineTime = dur
+      
+      for (let i = lyrics.syncedLyrics!.length - 1; i >= 0; i--) {
+        if (time >= lyrics.syncedLyrics![i].time) {
+          lineIdx = i
+          if (i < lyrics.syncedLyrics!.length - 1) {
+            nextLineTime = lyrics.syncedLyrics![i + 1].time
+          }
+          break
         }
-        break
       }
-    }
-
-    let prog = 0
-    if (lineIdx >= 0) {
-      const lineStartTime = lyrics.syncedLyrics[lineIdx].time
-      const lineDuration = nextLineTime - lineStartTime
-      if (lineDuration > 0) {
-        prog = Math.min(1, Math.max(0, (currentTime - lineStartTime) / lineDuration))
+      
+      // Calculate progress within current line
+      let prog = 0
+      if (lineIdx >= 0) {
+        const lineStartTime = lyrics.syncedLyrics![lineIdx].time
+        const lineDuration = nextLineTime - lineStartTime
+        if (lineDuration > 0) {
+          prog = Math.min(1, Math.max(0, (time - lineStartTime) / lineDuration))
+        }
       }
+      
+      // Store progress in ref
+      lineProgressRef.current = prog
+      
+      // Only update line index state if it changed
+      if (lineIdx !== stableLineIndexRef.current) {
+        stableLineIndexRef.current = lineIdx
+        setCurrentLineIndex(lineIdx)
+      }
+      
+      // Update progress every 50ms for smooth animation
+      const shouldUpdateProgress = now - lastProgressUpdateRef.current > 50
+      if (shouldUpdateProgress) {
+        setLineProgress(prog)
+        lastProgressUpdateRef.current = now
+      }
+      
+      animationId = requestAnimationFrame(animate)
     }
-
-    return { calculatedLineIndex: lineIdx, calculatedProgress: prog }
-  }, [currentTime, lyrics, duration])
-
-  useEffect(() => {
-    if (calculatedLineIndex !== currentLineIndex) {
-      setCurrentLineIndex(calculatedLineIndex)
+    
+    animationId = requestAnimationFrame(animate)
+    
+    return () => {
+      cancelAnimationFrame(animationId)
     }
-    setLineProgress(calculatedProgress)
-  }, [calculatedLineIndex, calculatedProgress, currentLineIndex])
+  }, [showLyrics, lyrics, audioElement, duration])
 
-  // Auto-scroll lyrics
+  // Auto-scroll lyrics - center active line
   useEffect(() => {
     if (currentLineIndex >= 0 && lineRefs.current[currentLineIndex] && lyricsContainerRef.current) {
       const line = lineRefs.current[currentLineIndex]
@@ -153,8 +220,9 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
         const lineHeight = line.offsetHeight
         const containerHeight = container.offsetHeight
         
+        // Center the line in the container
         container.scrollTo({
-          top: lineTop - containerHeight / 3 + lineHeight / 2,
+          top: lineTop - (containerHeight / 2) + (lineHeight / 2),
           behavior: 'smooth'
         })
       }
@@ -167,9 +235,22 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
     }
   }, [audioElement])
 
-  // Extract color from album art
+  // Custom seek handler for progress bar
+  const handleSeek = useCallback((progressValue: number) => {
+    if (audioElement && duration > 0) {
+      audioElement.currentTime = progressValue * duration
+    } else {
+      seek(progressValue)
+    }
+  }, [audioElement, duration, seek])
+
+  // Extract color from album art - regenerate for each song
   useEffect(() => {
-    if (!currentTrack?.thumbnail) return
+    // Reset to default when track changes
+    setBgColor('rgb(30, 50, 40)')
+    setDominantColor({ r: 75, g: 125, b: 100 })
+    
+    if (!currentTrack?.id) return
     
     const img = new Image()
     img.crossOrigin = 'anonymous'
@@ -186,63 +267,56 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
         })
       }
     }
-    img.src = currentTrack.thumbnail
-  }, [currentTrack?.thumbnail])
+    // Use YouTube thumbnail based on track ID for consistent color extraction
+    img.src = `https://img.youtube.com/vi/${currentTrack.id}/hqdefault.jpg`
+  }, [currentTrack?.id])
 
   // Handle ESC key to exit fullscreen
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onExit()
+        handleExit()
       }
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onExit])
+  }, [])
 
-  // Set window to fullscreen using Tauri API
+  // Auto-hide cursor and controls after 3 seconds of inactivity
   useEffect(() => {
-    let isMounted = true
-    
-    const setFullscreen = async () => {
-      if (typeof window !== 'undefined' && '__TAURI__' in window) {
-        try {
-          const { getCurrentWindow } = await import('@tauri-apps/api/window')
-          const win = getCurrentWindow()
-          if (isMounted) {
-            await win.setFullscreen(true)
-            console.log('Fullscreen enabled')
-          }
-        } catch (e) {
-          console.log('Fullscreen not available:', e)
-        }
+    const handleMouseMove = () => {
+      setControlsVisible(true)
+      
+      // Clear existing timeout
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
       }
+      
+      // Set new timeout to hide after 3 seconds
+      controlsTimeoutRef.current = setTimeout(() => {
+        setControlsVisible(false)
+      }, 3000)
     }
     
-    // Small delay to ensure component is mounted
-    const timer = setTimeout(setFullscreen, 50)
-
+    // Initial timeout
+    controlsTimeoutRef.current = setTimeout(() => {
+      setControlsVisible(false)
+    }, 3000)
+    
+    window.addEventListener('mousemove', handleMouseMove)
+    
     return () => {
-      isMounted = false
-      clearTimeout(timer)
-      // Exit fullscreen when component unmounts
-      const exitFullscreen = async () => {
-        if (typeof window !== 'undefined' && '__TAURI__' in window) {
-          try {
-            const { getCurrentWindow } = await import('@tauri-apps/api/window')
-            const win = getCurrentWindow()
-            await win.setFullscreen(false)
-            // Ensure decorations stay disabled after exiting fullscreen
-            await win.setDecorations(false)
-            console.log('Fullscreen disabled')
-          } catch (e) {
-            console.log('Could not exit fullscreen:', e)
-          }
-        }
+      window.removeEventListener('mousemove', handleMouseMove)
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current)
       }
-      exitFullscreen()
     }
   }, [])
+
+  // Handle exit - just call onExit, the useEffect cleanup will handle exiting fullscreen
+  const handleExit = () => {
+    onExit()
+  }
 
   const formatTime = (seconds: number) => {
     if (!seconds || !isFinite(seconds)) return '0:00'
@@ -256,10 +330,10 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
   const nextTracks = queue.slice(queueIndex + 1, queueIndex + 4)
 
   const { r, g, b } = dominantColor
-  const accentColor = `rgb(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)})`
-  const accentColorBright = `rgb(${Math.min(255, r + 60)}, ${Math.min(255, g + 60)}, ${Math.min(255, b + 60)})`
+  const accentColor = `rgb(${Math.min(255, r + 40)}, ${Math.min(255, g + 40)}, ${Math.min(255, b + 40)})`
 
-  // Render animated text with karaoke-style fill
+  // Render animated text with karaoke-style fill using CSS gradient mask
+  // Render animated text with karaoke-style character-by-character glow (same as LyricsPanel)
   const renderAnimatedText = useCallback((text: string, isCurrentLine: boolean, prog: number) => {
     if (!isCurrentLine) {
       return <span>{text}</span>
@@ -267,31 +341,48 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
 
     const chars = text.split('')
     const revealedCount = prog * chars.length
+    
+    // Use album art color for glow
+    const glowR = Math.min(255, r + 50)
+    const glowG = Math.min(255, g + 50)
+    const glowB = Math.min(255, b + 50)
+    const glowColor = `rgb(${glowR}, ${glowG}, ${glowB})`
+    const accentColor = `rgb(${r}, ${g}, ${b})`
+    const glowStyle = `0 0 10px ${glowColor}, 0 0 20px ${glowColor}, 0 0 40px ${accentColor}`
 
     return (
       <>
         {chars.map((char, i) => {
           const isRevealed = i < revealedCount
+          const waveDelay = i * 0.05
           
           return (
             <span
               key={i}
               style={{
-                color: isRevealed ? accentColorBright : 'rgba(255, 255, 255, 0.3)',
-                textShadow: isRevealed ? `0 0 20px ${accentColor}, 0 0 40px ${accentColor}` : 'none',
+                color: isRevealed ? '#ffffff' : 'rgba(255, 255, 255, 0.3)',
+                textShadow: isRevealed ? glowStyle : 'none',
+                display: 'inline-block',
+                animation: isRevealed ? 'subtleWave 2s ease-in-out infinite' : 'none',
+                animationDelay: `${waveDelay}s`,
+                transition: 'color 0.1s, text-shadow 0.1s',
               }}
             >
-              {char}
+              {char === ' ' ? '\u00A0' : char}
             </span>
           )
         })}
+        <style>{`
+          @keyframes subtleWave {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-2px); }
+          }
+        `}</style>
       </>
     )
-  }, [accentColor, accentColorBright])
+  }, [r, g, b])
 
   // Animation state for moving background with beat detection
-  const [bgOffset, setBgOffset] = useState({ x: 0, y: 0 })
-  const [beatPulse, setBeatPulse] = useState(1)
   const analyserRef = useRef<AnalyserNode | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const sourceRef = useRef<MediaElementAudioSourceNode | null>(null)
@@ -328,37 +419,56 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
     }
   }, [showLyrics, audioElement])
   
-  // Animate background with beat
+  // Beat animation state
+  const [bassLevel, setBassLevel] = useState(0)
+  const [bgScale, setBgScale] = useState(1)
+  const [bgPosition, setBgPosition] = useState({ x: 0, y: 0 })
+  const [time, setTime] = useState(0)
+  const [controlsVisible, setControlsVisible] = useState(true)
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  
+  // Animate background with flowing river-like motion
   useEffect(() => {
     if (!showLyrics) return
     
     let animationId: number
-    let time = 0
+    let t = 0
     const dataArray = new Uint8Array(analyserRef.current?.frequencyBinCount || 128)
     
     const animate = () => {
-      time += 0.008
+      t += 0.02 // Faster time progression for more noticeable movement
+      setTime(t)
       
-      // Get bass frequencies for beat detection
+      // Get frequency data for beat detection
       let bass = 0
       if (analyserRef.current && isPlaying) {
         analyserRef.current.getByteFrequencyData(dataArray)
-        // Average of low frequencies (bass)
-        for (let i = 0; i < 10; i++) {
+        for (let i = 0; i < 8; i++) {
           bass += dataArray[i]
         }
-        bass = bass / 10 / 255 // Normalize to 0-1
+        bass = (bass / 8 / 255) ** 0.8
       }
       
-      // Pulse effect based on bass
-      const targetPulse = 1 + bass * 0.3
-      setBeatPulse(prev => prev + (targetPulse - prev) * 0.3)
+      // Fast attack, slower decay for punchy response
+      setBassLevel(prev => {
+        const target = bass
+        return target > prev ? prev + (target - prev) * 0.8 : prev + (target - prev) * 0.1
+      })
       
-      // Movement with beat influence
-      const beatInfluence = 1 + bass * 0.5
-      setBgOffset({
-        x: Math.sin(time) * 40 * beatInfluence,
-        y: Math.cos(time * 0.7) * 30 * beatInfluence
+      // Scale pulses with bass
+      setBgScale(prev => {
+        const target = 1.3 + bass * 0.2
+        return prev + (target - prev) * 0.3
+      })
+      
+      // River-like flowing movement - multiple sine waves at different frequencies
+      // Creates organic, random-feeling motion
+      const flowX = Math.sin(t * 0.8) * 60 + Math.sin(t * 1.3) * 40 + Math.sin(t * 2.1) * 20
+      const flowY = Math.cos(t * 0.6) * 50 + Math.cos(t * 1.1) * 35 + Math.sin(t * 1.7) * 25
+      
+      setBgPosition({
+        x: flowX + bass * 30 * Math.sin(t * 4),
+        y: flowY + bass * 25 * Math.cos(t * 3.5)
       })
       
       animationId = requestAnimationFrame(animate)
@@ -372,46 +482,80 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
     <div 
       className="fixed inset-0 z-50 flex flex-col text-white overflow-hidden"
       style={{ 
-        backgroundColor: '#0a0a0a'
+        backgroundColor: '#000',
+        cursor: controlsVisible ? 'auto' : 'none'
       }}
     >
-      {/* Solid animated background for lyrics mode */}
-      {showLyrics && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ backgroundColor: `rgb(${Math.floor(r * 0.12)}, ${Math.floor(g * 0.12)}, ${Math.floor(b * 0.12)})` }}>
-          {/* Large moving gradient blob 1 - pulses with beat */}
+      {/* Album art background with blur - moving and beat reactive */}
+      {showLyrics && currentTrack && (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Album art background - blurred, saturated, moving with beat */}
           <div 
-            className="absolute rounded-full"
-            style={{ 
-              width: `${800 * beatPulse}px`,
-              height: `${800 * beatPulse}px`,
-              background: `radial-gradient(circle, rgba(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)}, ${0.5 + beatPulse * 0.15}) 0%, transparent 60%)`,
-              top: `calc(5% + ${bgOffset.y}px)`,
-              left: `calc(-10% + ${bgOffset.x}px)`,
-              filter: 'blur(80px)',
+            className="absolute"
+            style={{
+              top: '-20%',
+              left: '-20%',
+              right: '-20%',
+              bottom: '-20%',
+              backgroundImage: `url(https://img.youtube.com/vi/${currentTrack.id}/maxresdefault.jpg)`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: `blur(80px) saturate(2) brightness(0.3)`,
+              transform: `scale(${bgScale}) translate(${bgPosition.x}px, ${bgPosition.y}px)`,
             }}
           />
-          {/* Large moving gradient blob 2 - pulses with beat */}
+          
+          {/* Second layer - moves opposite direction */}
           <div 
-            className="absolute rounded-full"
-            style={{ 
-              width: `${650 * beatPulse}px`,
-              height: `${650 * beatPulse}px`,
-              background: `radial-gradient(circle, rgba(${Math.min(255, r + 40)}, ${Math.min(255, g + 20)}, ${Math.min(255, b + 60)}, ${0.4 + beatPulse * 0.15}) 0%, transparent 60%)`,
-              bottom: `calc(10% + ${-bgOffset.y * 0.8}px)`,
-              right: `calc(-5% + ${-bgOffset.x * 0.8}px)`,
+            className="absolute"
+            style={{
+              top: '-30%',
+              left: '-30%',
+              right: '-30%',
+              bottom: '-30%',
+              backgroundImage: `url(https://img.youtube.com/vi/${currentTrack.id}/maxresdefault.jpg)`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              filter: `blur(120px) saturate(1.5) brightness(0.2) hue-rotate(${Math.sin(time) * 10}deg)`,
+              transform: `scale(${bgScale * 1.1}) translate(${-bgPosition.x * 0.7}px, ${-bgPosition.y * 0.7}px)`,
+              opacity: 0.7,
+              mixBlendMode: 'soft-light',
+            }}
+          />
+          
+          {/* Color overlay that pulses and moves with beat */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: `radial-gradient(ellipse at ${30 + bgPosition.x * 0.5}% ${30 + bgPosition.y * 0.5}%, rgba(${Math.min(255, r)}, ${Math.min(255, g)}, ${Math.min(255, b)}, ${0.4 + bassLevel * 0.3}) 0%, transparent 50%)`,
+              transform: `scale(${1 + bassLevel * 0.4})`,
+              filter: 'blur(40px)',
+            }}
+          />
+          
+          {/* Secondary color blob - moves opposite */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: `radial-gradient(ellipse at ${70 - bgPosition.x * 0.3}% ${70 - bgPosition.y * 0.3}%, rgba(${Math.min(255, r * 0.8)}, ${Math.min(255, g * 1.2)}, ${Math.min(255, b * 1.2)}, ${0.3 + bassLevel * 0.2}) 0%, transparent 50%)`,
+              transform: `scale(${1 + bassLevel * 0.3})`,
               filter: 'blur(60px)',
             }}
           />
-          {/* Center accent blob - pulses with beat */}
+          
+          {/* Dark gradient overlay for text readability */}
           <div 
-            className="absolute rounded-full"
-            style={{ 
-              width: `${550 * beatPulse}px`,
-              height: `${550 * beatPulse}px`,
-              background: `radial-gradient(circle, rgba(${Math.max(0, r - 20)}, ${Math.min(255, g + 30)}, ${Math.min(255, b + 20)}, ${0.35 + beatPulse * 0.1}) 0%, transparent 60%)`,
-              top: `calc(40% + ${bgOffset.x * 0.5}px)`,
-              left: `calc(30% + ${bgOffset.y * 0.5}px)`,
-              filter: 'blur(70px)',
+            className="absolute inset-0"
+            style={{
+              background: 'linear-gradient(90deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.1) 40%, rgba(0,0,0,0.3) 100%)',
+            }}
+          />
+          
+          {/* Top/bottom fade for depth */}
+          <div 
+            className="absolute inset-0"
+            style={{
+              background: 'linear-gradient(180deg, rgba(0,0,0,0.2) 0%, transparent 15%, transparent 85%, rgba(0,0,0,0.4) 100%)',
             }}
           />
         </div>
@@ -442,12 +586,15 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
       {/* Content overlay */}
       <div className="relative z-10 flex flex-col h-full">
         {/* Top bar */}
-        <div className="flex items-center justify-between px-8 py-5">
+        <div 
+          className="flex items-center justify-between px-8 py-5 transition-opacity duration-300"
+          style={{ opacity: controlsVisible ? 1 : 0, pointerEvents: controlsVisible ? 'auto' : 'none' }}
+        >
           <div className="text-sm font-medium opacity-80">
             {currentTrack?.artists[0]?.name || 'Unknown Artist'}
           </div>
           <button 
-            onClick={onExit}
+            onClick={handleExit}
             className="p-2 hover:bg-white/10 rounded-full transition"
             title="Exit fullscreen (Esc)"
           >
@@ -456,7 +603,13 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
         </div>
 
         {/* Main content */}
-        <div className={`flex-1 flex items-center ${showLyrics ? 'justify-start px-16 gap-12' : 'justify-center gap-16 px-12'} overflow-hidden`}>
+        <div 
+          className={`flex-1 flex items-center overflow-hidden transition-all duration-500 ${
+            showLyrics 
+              ? (controlsVisible ? 'justify-start px-16 gap-12' : 'justify-center px-16 gap-16') 
+              : 'justify-center gap-16 px-12'
+          }`}
+        >
           {/* Album art - left side in lyrics mode */}
           <div className={`flex-shrink-0 ${showLyrics ? 'flex flex-col items-center' : ''}`}>
             {currentTrack ? (
@@ -494,7 +647,7 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
 
           {/* Lyrics panel (when lyrics mode is on) */}
           {showLyrics ? (
-            <div className="flex-1 h-[calc(100vh-220px)] max-h-[600px] overflow-hidden">
+            <div className="flex-1 h-[calc(100vh-220px)] max-h-[600px]">
               {lyricsLoading ? (
                 <div className="h-full flex flex-col items-center justify-center">
                   <Loader2 size={40} className="animate-spin mb-4" style={{ color: accentColor }} />
@@ -508,14 +661,14 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
               ) : lyrics.syncedLyrics ? (
                 <div 
                   ref={lyricsContainerRef}
-                  className="h-full overflow-y-auto pl-4 pr-8"
+                  className="h-full overflow-y-auto px-12"
                   style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                   tabIndex={-1}
                 >
                   <style>{`div::-webkit-scrollbar { display: none; }`}</style>
-                  <div className="min-h-full flex flex-col py-8">
-                    {/* Top padding for scroll */}
-                    <div className="h-[30vh] flex-shrink-0" />
+                  <div className="min-h-full flex flex-col">
+                    {/* Top padding so first line can be centered */}
+                    <div className="h-[40vh] flex-shrink-0" />
                     {lyrics.syncedLyrics.map((line, index) => {
                       const isCurrentLine = index === currentLineIndex
                       const isPastLine = index < currentLineIndex
@@ -525,21 +678,27 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
                           key={index}
                           ref={el => lineRefs.current[index] = el}
                           onClick={() => handleLineClick(line.time)}
-                          className="py-3 cursor-pointer font-bold leading-tight pl-2"
+                          className={`py-2 cursor-pointer font-bold leading-snug ${
+                            isCurrentLine ? 'text-[2rem]' : 'text-[1.5rem]'
+                          }`}
                           style={{
-                            fontSize: isCurrentLine ? '2.5rem' : '1.75rem',
-                            color: isPastLine ? 'rgba(255,255,255,0.25)' : isCurrentLine ? undefined : 'rgba(255,255,255,0.4)',
+                            color: '#ffffff',
+                            opacity: isPastLine ? 0.33 : isCurrentLine ? 1 : 0.66,
+                            filter: isPastLine ? 'blur(2.5px)' : 'blur(0px)',
                             transform: isCurrentLine ? 'scale(1.02)' : 'scale(1)',
                             transformOrigin: 'left center',
-                            transition: 'transform 0.3s ease, font-size 0.3s ease',
-                            marginLeft: '-8px', // Compensate for glow space
+                            paddingLeft: '4px',
+                            transition: 'opacity 0.5s ease, filter 0.5s ease, transform 0.3s ease, font-size 0.3s ease',
                           }}
                         >
-                          {renderAnimatedText(line.text, isCurrentLine, lineProgress)}
+                          {isCurrentLine 
+                            ? renderAnimatedText(line.text, true, lineProgress)
+                            : <span>{line.text}</span>
+                          }
                         </div>
                       )
                     })}
-                    {/* Bottom padding for scroll */}
+                    {/* Bottom padding so last line can be centered */}
                     <div className="h-[40vh] flex-shrink-0" />
                   </div>
                 </div>
@@ -567,7 +726,7 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
                     <p className="text-sm text-neutral-400 mt-0.5">Artist</p>
                     <button 
                       onClick={() => {
-                        onExit()
+                        handleExit()
                         if (currentTrack.artists[0].id) {
                           openArtist(currentTrack.artists[0].id)
                         }
@@ -599,7 +758,7 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-lg font-bold">Next in queue</h3>
                 <button 
-                  onClick={() => { onExit(); setView('queue') }}
+                  onClick={() => { handleExit(); setView('queue') }}
                   className="text-sm text-neutral-400 hover:text-white transition"
                 >
                   Open queue
@@ -634,7 +793,10 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
         </div>
 
         {/* Bottom player */}
-        <div className="px-8 pb-8 pt-4">
+        <div 
+          className="px-8 pb-8 pt-4 transition-opacity duration-300"
+          style={{ opacity: controlsVisible ? 1 : 0, pointerEvents: controlsVisible ? 'auto' : 'none' }}
+        >
           {/* Track title (only in non-lyrics mode) */}
           {!showLyrics && (
             <div className="flex items-center justify-between mb-3">
@@ -653,15 +815,46 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
           {/* Progress bar */}
           <div className="flex items-center gap-4 mb-4">
             <span className="text-xs text-neutral-400 w-10 text-right">{formatTime(currentTimeFormatted)}</span>
-            <div className="flex-1 relative h-1.5 bg-white/20 rounded-full group cursor-pointer">
-              <div className="absolute h-full bg-white rounded-full pointer-events-none" style={{ width: `${progress * 100}%` }} />
-              <input
-                type="range" min="0" max="1" step="0.001" value={progress}
-                onChange={(e) => seek(parseFloat(e.target.value))}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
+            <div 
+              className="flex-1 relative h-6 flex items-center cursor-pointer group"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect()
+                const x = e.clientX - rect.left
+                const newProgress = Math.max(0, Math.min(1, x / rect.width))
+                handleSeek(newProgress)
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                const container = e.currentTarget
+                const rect = container.getBoundingClientRect()
+                
+                // Initial click position
+                const x = e.clientX - rect.left
+                const newProgress = Math.max(0, Math.min(1, x / rect.width))
+                handleSeek(newProgress)
+                
+                const onMouseMove = (moveEvent: MouseEvent) => {
+                  const moveX = moveEvent.clientX - rect.left
+                  const moveProgress = Math.max(0, Math.min(1, moveX / rect.width))
+                  handleSeek(moveProgress)
+                }
+                
+                const onMouseUp = () => {
+                  window.removeEventListener('mousemove', onMouseMove)
+                  window.removeEventListener('mouseup', onMouseUp)
+                }
+                
+                window.addEventListener('mousemove', onMouseMove)
+                window.addEventListener('mouseup', onMouseUp)
+              }}
+            >
+              {/* Visual track */}
+              <div className="w-full h-1.5 bg-white/20 rounded-full relative">
+                <div className="absolute h-full bg-white rounded-full" style={{ width: `${progress * 100}%` }} />
+              </div>
+              {/* Thumb */}
               <div 
-                className="absolute w-4 h-4 bg-white rounded-full -top-1.5 shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none"
+                className="absolute w-4 h-4 bg-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition pointer-events-none"
                 style={{ left: `calc(${progress * 100}% - 8px)` }}
               />
             </div>
@@ -674,22 +867,22 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
             
             {/* Center controls */}
             <div className="flex items-center gap-8">
-              <button onClick={toggleShuffle} className={`p-2 ${shuffle ? 'text-ios-blue' : 'text-neutral-400 hover:text-white'} transition`}>
+              <button onClick={handleToggleShuffle} className={`p-2 ${shuffle ? 'text-ios-blue' : 'text-neutral-400 hover:text-white'} transition`}>
                 <Shuffle size={22} />
               </button>
-              <button onClick={prevTrack} className="p-2 text-white hover:scale-110 transition">
+              <button onClick={handlePrevTrack} className="p-2 text-white hover:scale-110 transition">
                 <SkipBack size={28} fill="white" />
               </button>
               <button 
-                onClick={togglePlay} disabled={!currentTrack || isLoading}
+                onClick={handleTogglePlay} disabled={!currentTrack || isLoading}
                 className="w-16 h-16 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 transition disabled:opacity-50"
               >
                 {isLoading ? <Loader2 size={32} className="animate-spin" /> : isPlaying ? <Pause size={32} fill="black" /> : <Play size={32} fill="black" className="ml-1" />}
               </button>
-              <button onClick={nextTrack} className="p-2 text-white hover:scale-110 transition">
+              <button onClick={handleNextTrack} className="p-2 text-white hover:scale-110 transition">
                 <SkipForward size={28} fill="white" />
               </button>
-              <button onClick={cycleRepeat} className={`p-2 ${repeat !== 'off' ? 'text-ios-blue' : 'text-neutral-400 hover:text-white'} transition`}>
+              <button onClick={handleCycleRepeat} className={`p-2 ${repeat !== 'off' ? 'text-ios-blue' : 'text-neutral-400 hover:text-white'} transition`}>
                 <RepeatIcon size={22} />
               </button>
             </div>
@@ -703,15 +896,15 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
               >
                 <Mic2 size={22} />
               </button>
-              <button onClick={() => { onExit(); setView('queue') }} className="p-2 text-neutral-400 hover:text-white transition">
+              <button onClick={() => { handleExit(); setView('queue') }} className="p-2 text-neutral-400 hover:text-white transition">
                 <ListMusic size={22} />
               </button>
-              <button onClick={() => setVolume(volume > 0 ? 0 : 0.8)} className="p-2 text-neutral-400 hover:text-white transition">
+              <button onClick={handleToggleMute} className="p-2 text-neutral-400 hover:text-white transition">
                 {volume === 0 ? <VolumeX size={22} /> : <Volume2 size={22} />}
               </button>
               <div className="w-28 relative h-1 bg-white/20 rounded-full">
                 <div className="absolute h-full bg-white rounded-full pointer-events-none" style={{ width: `${volume * 100}%` }} />
-                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => setVolume(parseFloat(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                <input type="range" min="0" max="1" step="0.01" value={volume} onChange={(e) => handleSetVolume(parseFloat(e.target.value))} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
               </div>
             </div>
           </div>
