@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://vyra.fasthand.study/">
-    <img src="https://img.shields.io/badge/Download-v1.0.7-blue?style=flat-square" alt="Download">
+    <img src="https://img.shields.io/badge/Download-v1.0.8-blue?style=flat-square" alt="Download">
   </a>
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
@@ -43,19 +43,23 @@
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 - 🎮 **Discord RPC** — Show what you're listening to on Discord
 
-## 🆕 What's New in v1.0.7
+## 🆕 What's New in v1.0.8
 
-### Bug Fixes
-- **Fixed Lyrics for Non-Latin Scripts** — Bengali, Arabic, Hindi, and other non-Latin lyrics now display correctly in karaoke mode
-- **Fixed Player State on Startup** — Player now shows saved track, progress, and duration immediately on app start
-- **Improved Fullscreen Seek Bar** — Better drag interaction for the progress bar in fullscreen mode
+### New Features
+- **Windows Taskbar Thumbnail Toolbar** — Media control buttons (Previous, Play/Pause, Next) now appear on the Windows taskbar thumbnail preview
+- **Dynamic Play/Pause Button** — Taskbar button automatically switches between play and pause icons based on playback state
+
+### Improvements
+- **Professional Icons** — Using high-quality PNG icons for taskbar buttons with proper transparency and anti-aliasing
+- **Better Windows Integration** — Enhanced native Windows experience with thumbnail toolbar controls
+
 
 ## 🚀 Installation
 
 ### Windows
 
 1. Download the latest installer from [vyra.fasthand.study](https://vyra.fasthand.study/)
-2. Run `VYRA_1.0.7_x64-setup.exe`
+2. Run `VYRA_1.0.8_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -74,6 +78,8 @@ npm run tauri:dev
 # Build for production
 npm run tauri:build
 ```
+
+> **Note for Developers:** If you encounter timeout errors during build (especially with crates.io), you may need to use a VPN. This is due to occasional server issues with crates.io or regional connectivity problems.
 
 ## 🛠️ Tech Stack
 
@@ -120,6 +126,74 @@ VYRA uses [LRCLIB](https://lrclib.net/) for synchronized lyrics:
 - Click any line to seek to that position
 - Works in both normal and fullscreen modes
 
+## � CWindows Taskbar Thumbnail Toolbar (For Tauri Developers)
+
+VYRA implements Windows Taskbar Thumbnail Toolbar buttons using the unofficial method with `ITaskbarList3` COM interface. This guide helps other Tauri developers implement similar functionality.
+
+> **Build Note:** If you encounter timeout errors when building with these dependencies (especially downloading from crates.io), try using a VPN. This is due to occasional server issues with crates.io or regional connectivity problems.
+
+### Implementation Overview
+
+1. **Add Windows Dependencies** to `Cargo.toml`:
+```toml
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Controls",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Com",
+] }
+image = "0.25"  # For loading PNG icons
+```
+
+2. **Key Components**:
+   - Use `ITaskbarList3::ThumbBarAddButtons` to add buttons
+   - Use `ITaskbarList3::ThumbBarUpdateButtons` to update button states
+   - Subclass the window to intercept `WM_COMMAND` messages for button clicks
+   - Use `include_bytes!` to embed PNG icons in the binary
+
+3. **Button Updates**:
+   - Store the window HWND in a static `AtomicIsize`
+   - Create a new `ITaskbarList3` instance when updating (COM interfaces can't be stored in statics)
+   - Use `THB_ICON` flag to update button icons dynamically
+
+4. **Icon Format**:
+   - 16x16 PNG images work best
+   - Convert to HICON using `CreateDIBSection` and `CreateIconIndirect`
+   - Use premultiplied alpha for proper transparency
+
+### Example Code Structure
+
+```rust
+#[cfg(target_os = "windows")]
+mod taskbar_buttons {
+    // 1. Define button IDs
+    pub const BTN_PREV: u32 = 0;
+    pub const BTN_PLAY: u32 = 1;
+    pub const BTN_NEXT: u32 = 2;
+    
+    // 2. Store HWND for updates
+    static HWND_MAIN: AtomicIsize = AtomicIsize::new(0);
+    
+    // 3. Initialize buttons on app start
+    pub fn init_taskbar_buttons(app_handle: AppHandle, hwnd: isize) {
+        // Create ITaskbarList3, add buttons
+    }
+    
+    // 4. Update button state
+    pub fn update_button(button_id: u32, new_icon: HICON) {
+        // Create new ITaskbarList3, call ThumbBarUpdateButtons
+    }
+}
+```
+
+### Resources
+- [Microsoft ITaskbarList3 Documentation](https://learn.microsoft.com/en-us/windows/win32/api/shobjidl_core/nn-shobjidl_core-itaskbarlist3)
+- [VYRA Source Code](https://github.com/HasibulHasan098/VYRA-MUSIC) - See `src-tauri/src/main.rs` for full implementation
+
 ## 🤝 Contributing
 
 Contributions are welcome! Feel free to:
@@ -133,6 +207,11 @@ Contributions are welcome! Feel free to:
 ## 📄 License
 
 This project is open source and available under the [MIT License](LICENSE).
+
+---
+
+## Disclaimer: VYRA is an independent, open-source project and is not affiliated with, endorsed by, or associated with YouTube, YouTube Music, or Google in any way. VYRA simply provides an alternative interface to access publicly available content. All trademarks and brand names belong to their respective owners.
+
 
 ## 👨‍💻 Author
 

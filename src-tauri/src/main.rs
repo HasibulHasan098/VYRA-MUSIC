@@ -16,6 +16,288 @@ use discord_rich_presence::{activity, DiscordIpc, DiscordIpcClient};
 const INNERTUBE_API_KEY: &str = "AIzaSyC9XL3ZjWddXya6X74dJoCTL-WEYFDNX30";
 const DISCORD_CLIENT_ID: &str = "1456592368005283893";
 
+// Windows Taskbar Thumbnail Toolbar Buttons (Prev/Play/Next)
+#[cfg(target_os = "windows")]
+mod taskbar_buttons {
+    use std::sync::OnceLock;
+    use std::sync::atomic::{AtomicIsize, Ordering};
+    use tauri::{AppHandle, Emitter, Manager};
+    use windows::Win32::Foundation::{HWND, WPARAM, LPARAM, LRESULT};
+    use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{ITaskbarList3, TaskbarList, THUMBBUTTON, THB_FLAGS, THB_TOOLTIP, THB_BITMAP, THBF_ENABLED};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowLongPtrW, GetWindowLongPtrW, CallWindowProcW, GWLP_WNDPROC, WNDPROC, WM_COMMAND,
+        CreateIconIndirect, ICONINFO, HICON,
+    };
+    use windows::Win32::UI::Controls::{ImageList_Create, ImageList_ReplaceIcon, ILC_COLOR32, ILC_MASK};
+    use windows::Win32::Graphics::Gdi::{
+        DeleteObject, GetDC, ReleaseDC, CreateBitmap,
+    };
+    use windows::Win32::Graphics::Gdi::{
+        CreateDIBSection, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    
+    // Button IDs
+    pub const BTN_PREV: u32 = 0;
+    pub const BTN_PLAY_PAUSE: u32 = 1;
+    pub const BTN_NEXT: u32 = 2;
+    
+    // THBN_CLICKED is sent via WM_COMMAND with HIWORD(wParam) = THBN_CLICKED (0x1800)
+    const THBN_CLICKED: u32 = 0x1800;
+    
+    static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
+    static ORIGINAL_WNDPROC: AtomicIsize = AtomicIsize::new(0);
+    static HWND_MAIN: AtomicIsize = AtomicIsize::new(0);
+    
+    // Load icon from embedded PNG data
+    unsafe fn create_media_icon(icon_type: u32, is_playing: bool) -> HICON {
+        let png_data: &[u8] = match icon_type {
+            BTN_PREV => include_bytes!("../icons/play-previous-button.png"),
+            BTN_PLAY_PAUSE => {
+                if is_playing {
+                    include_bytes!("../icons/pause-button.png")
+                } else {
+                    include_bytes!("../icons/play-button.png")
+                }
+            },
+            BTN_NEXT => include_bytes!("../icons/play-next-button.png"),
+            _ => include_bytes!("../icons/play-button.png"),
+        };
+        
+        // Load PNG from embedded bytes
+        if let Ok(img) = image::load_from_memory(png_data) {
+            let img = img.resize_exact(16, 16, image::imageops::FilterType::Lanczos3);
+            let rgba = img.to_rgba8();
+            
+            let size = 16i32;
+            let screen_dc = GetDC(HWND::default());
+            
+            let bmi = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: size,
+                    biHeight: -size, // Top-down
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    biSizeImage: 0,
+                    biXPelsPerMeter: 0,
+                    biYPelsPerMeter: 0,
+                    biClrUsed: 0,
+                    biClrImportant: 0,
+                },
+                bmiColors: [Default::default()],
+            };
+            
+            let mut bits: *mut std::ffi::c_void = std::ptr::null_mut();
+            let color_bitmap = CreateDIBSection(screen_dc, &bmi, DIB_RGB_COLORS, &mut bits, None, 0).unwrap_or_default();
+            
+            if !bits.is_null() {
+                let pixels = bits as *mut u32;
+                
+                // Convert RGBA to BGRA with premultiplied alpha
+                for y in 0..16 {
+                    for x in 0..16 {
+                        let pixel = rgba.get_pixel(x, y);
+                        let r = pixel[0] as u32;
+                        let g = pixel[1] as u32;
+                        let b = pixel[2] as u32;
+                        let a = pixel[3] as u32;
+                        
+                        // Premultiply alpha
+                        let pr = (r * a / 255) as u32;
+                        let pg = (g * a / 255) as u32;
+                        let pb = (b * a / 255) as u32;
+                        
+                        // ARGB format
+                        let argb = (a << 24) | (pr << 16) | (pg << 8) | pb;
+                        *pixels.add((y * 16 + x) as usize) = argb;
+                    }
+                }
+            }
+            
+            let mask_bitmap = CreateBitmap(size, size, 1, 1, None);
+            
+            let icon_info = ICONINFO {
+                fIcon: windows::Win32::Foundation::BOOL(1),
+                xHotspot: 0,
+                yHotspot: 0,
+                hbmMask: mask_bitmap,
+                hbmColor: color_bitmap,
+            };
+            
+            let icon = CreateIconIndirect(&icon_info).unwrap_or_default();
+            
+            DeleteObject(color_bitmap);
+            DeleteObject(mask_bitmap);
+            ReleaseDC(HWND::default(), screen_dc);
+            
+            return icon;
+        }
+        
+        // Return empty icon if loading fails
+        HICON::default()
+    }
+    
+    // Window procedure to intercept thumbnail button clicks
+    unsafe extern "system" fn subclass_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if msg == WM_COMMAND {
+            let hi_word = ((wparam.0 >> 16) & 0xFFFF) as u32;
+            let lo_word = (wparam.0 & 0xFFFF) as u32;
+            
+            // Check if this is a thumbnail button click
+            if hi_word == THBN_CLICKED {
+                handle_thumb_button(lo_word);
+            }
+        }
+        
+        // Call original window procedure
+        let original = ORIGINAL_WNDPROC.load(Ordering::SeqCst);
+        if original != 0 {
+            let wndproc: WNDPROC = std::mem::transmute(original);
+            CallWindowProcW(wndproc, hwnd, msg, wparam, lparam)
+        } else {
+            LRESULT(0)
+        }
+    }
+    
+    pub fn init_taskbar_buttons(app_handle: AppHandle, hwnd: isize) {
+        let _ = APP_HANDLE.set(app_handle);
+        
+        std::thread::spawn(move || {
+            unsafe {
+                // Initialize COM for this thread
+                if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+                    return;
+                }
+                
+                // Subclass the window to intercept WM_COMMAND messages
+                let hwnd_win = HWND(hwnd as *mut std::ffi::c_void);
+                let original = GetWindowLongPtrW(hwnd_win, GWLP_WNDPROC);
+                ORIGINAL_WNDPROC.store(original, Ordering::SeqCst);
+                SetWindowLongPtrW(hwnd_win, GWLP_WNDPROC, subclass_wndproc as isize);
+                
+                // Store HWND for later updates
+                HWND_MAIN.store(hwnd as isize, Ordering::SeqCst);
+                
+                // Create image list for toolbar buttons
+                let himagelist = ImageList_Create(16, 16, ILC_COLOR32 | ILC_MASK, 3, 0);
+                
+                if !himagelist.is_invalid() {
+                    // Create and add icons to image list (start with play button)
+                    let prev_icon = create_media_icon(BTN_PREV, false);
+                    let play_icon = create_media_icon(BTN_PLAY_PAUSE, false);
+                    let next_icon = create_media_icon(BTN_NEXT, false);
+                    
+                    ImageList_ReplaceIcon(himagelist, -1, prev_icon);
+                    ImageList_ReplaceIcon(himagelist, -1, play_icon);
+                    ImageList_ReplaceIcon(himagelist, -1, next_icon);
+                    
+                    // Create ITaskbarList3 instance
+                    let taskbar: Result<ITaskbarList3, _> = CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER);
+                    
+                    if let Ok(taskbar) = taskbar {
+                        if taskbar.HrInit().is_ok() {
+                            // Set the image list for the thumbnail toolbar
+                            let _ = taskbar.ThumbBarSetImageList(hwnd_win, himagelist);
+                            
+                            // Create thumbnail buttons using image list indices
+                            let buttons = [
+                                THUMBBUTTON {
+                                    dwMask: THB_FLAGS | THB_TOOLTIP | THB_BITMAP,
+                                    iId: BTN_PREV,
+                                    iBitmap: 0, // Index in image list
+                                    hIcon: HICON::default(),
+                                    szTip: string_to_wide_array("Previous"),
+                                    dwFlags: THBF_ENABLED,
+                                },
+                                THUMBBUTTON {
+                                    dwMask: THB_FLAGS | THB_TOOLTIP | THB_BITMAP,
+                                    iId: BTN_PLAY_PAUSE,
+                                    iBitmap: 1, // Index in image list
+                                    hIcon: HICON::default(),
+                                    szTip: string_to_wide_array("Play/Pause"),
+                                    dwFlags: THBF_ENABLED,
+                                },
+                                THUMBBUTTON {
+                                    dwMask: THB_FLAGS | THB_TOOLTIP | THB_BITMAP,
+                                    iId: BTN_NEXT,
+                                    iBitmap: 2, // Index in image list
+                                    hIcon: HICON::default(),
+                                    szTip: string_to_wide_array("Next"),
+                                    dwFlags: THBF_ENABLED,
+                                },
+                            ];
+                            
+                            // Add buttons to taskbar thumbnail toolbar
+                            let _ = taskbar.ThumbBarAddButtons(hwnd_win, &buttons);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    pub fn update_play_pause_button(is_playing: bool) {
+        std::thread::spawn(move || {
+            unsafe {
+                // Reinitialize COM for this thread
+                if CoInitializeEx(None, COINIT_APARTMENTTHREADED).is_err() {
+                    return;
+                }
+                
+                let hwnd = HWND_MAIN.load(Ordering::SeqCst);
+                if hwnd != 0 {
+                    let hwnd_win = HWND(hwnd as *mut std::ffi::c_void);
+                    
+                    // Create new taskbar instance
+                    let taskbar: Result<ITaskbarList3, _> = CoCreateInstance(&TaskbarList, None, CLSCTX_INPROC_SERVER);
+                    if let Ok(taskbar) = taskbar {
+                        if taskbar.HrInit().is_ok() {
+                            // Create new icon based on playing state
+                            let new_icon = create_media_icon(BTN_PLAY_PAUSE, is_playing);
+                            
+                            // Update the button
+                            let button = THUMBBUTTON {
+                                dwMask: THB_FLAGS | THB_TOOLTIP | windows::Win32::UI::Shell::THB_ICON,
+                                iId: BTN_PLAY_PAUSE,
+                                iBitmap: 0,
+                                hIcon: new_icon,
+                                szTip: string_to_wide_array(if is_playing { "Pause" } else { "Play" }),
+                                dwFlags: THBF_ENABLED,
+                            };
+                            
+                            let _ = taskbar.ThumbBarUpdateButtons(hwnd_win, &[button]);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    
+    fn handle_thumb_button(button_id: u32) {
+        if let Some(app) = APP_HANDLE.get() {
+            if let Some(window) = app.get_webview_window("main") {
+                let command = match button_id {
+                    BTN_PREV => "prev",
+                    BTN_PLAY_PAUSE => "play_pause",
+                    BTN_NEXT => "next",
+                    _ => return,
+                };
+                let _: Result<(), _> = window.emit("media-control", command);
+            }
+        }
+    }
+    
+    fn string_to_wide_array(s: &str) -> [u16; 260] {
+        let mut arr = [0u16; 260];
+        for (i, c) in s.encode_utf16().take(259).enumerate() {
+            arr[i] = c;
+        }
+        arr
+    }
+}
+
 struct AppState {
     client: Client,
     visitor_data: Mutex<Option<String>>,
@@ -846,6 +1128,11 @@ fn update_media_metadata(
 
 #[tauri::command]
 fn update_media_playback(is_playing: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        taskbar_buttons::update_play_pause_button(is_playing);
+    }
+    
     if let Some(controls_arc) = MEDIA_CONTROLS.get() {
         if let Ok(mut controls) = controls_arc.lock() {
             let playback = if is_playing {
@@ -1377,6 +1664,21 @@ fn main() {
             let app_handle = app.handle().clone();
             if let Some(controls) = init_media_controls(app_handle.clone()) {
                 let _ = MEDIA_CONTROLS.set(controls);
+            }
+            
+            // Initialize Windows Taskbar Thumbnail Buttons
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    // Get the HWND after a short delay to ensure window is ready
+                    let handle = app_handle.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        if let Ok(hwnd) = window.hwnd() {
+                            taskbar_buttons::init_taskbar_buttons(handle, hwnd.0 as isize);
+                        }
+                    });
+                }
             }
             
             let discord_client = init_discord_rpc();
