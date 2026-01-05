@@ -703,25 +703,23 @@ export const usePlayerStore = create<PlayerState>()(
   },
 
   restorePlayback: async () => {
-    const { currentTrack, initAudio, savedPosition } = get()
+    const { currentTrack, initAudio, savedPosition, duration: savedDuration } = get()
     
     // Initialize audio element first
     initAudio()
     
-    // If we have a saved track, just show it in the player UI
-    // Don't try to load the stream - user will click play when ready
+    // If we have a saved track, show it in the player UI with saved state
     if (currentTrack) {
-      // Track is already in state from persist, just ensure UI shows it
-      // Don't call setCurrentTrack - that would try to fetch stream
-      // Calculate progress from saved position and track duration
-      const trackDuration = currentTrack.duration || 0
-      const restoredProgress = trackDuration > 0 ? savedPosition / trackDuration : 0
+      // Use saved duration from track or from persisted state
+      const trackDuration = currentTrack.duration || savedDuration || 0
+      const restoredProgress = trackDuration > 0 ? Math.min(savedPosition / trackDuration, 1) : 0
+      
       set({ 
         isLoading: false, 
         error: null, 
         isPlaying: false,
         duration: trackDuration,
-        progress: Math.min(restoredProgress, 1) // Ensure progress doesn't exceed 1
+        progress: restoredProgress
       })
     }
   }
@@ -736,6 +734,7 @@ export const usePlayerStore = create<PlayerState>()(
         queue: state.queue,
         queueIndex: state.queueIndex,
         savedPosition: state.savedPosition,
+        duration: state.duration,
         shuffle: state.shuffle,
         repeat: state.repeat
       })

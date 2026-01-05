@@ -334,13 +334,25 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
 
   // Render animated text with karaoke-style fill using CSS gradient mask
   // Render animated text with karaoke-style character-by-character glow (same as LyricsPanel)
+  // Uses Intl.Segmenter for proper Unicode grapheme handling (Bengali, Arabic, etc.)
   const renderAnimatedText = useCallback((text: string, isCurrentLine: boolean, prog: number) => {
     if (!isCurrentLine) {
       return <span>{text}</span>
     }
 
-    const chars = text.split('')
-    const revealedCount = prog * chars.length
+    // Use Intl.Segmenter for proper grapheme clustering (handles Bengali, Arabic, emoji, etc.)
+    let graphemes: string[]
+    // @ts-ignore - Intl.Segmenter is available in modern browsers but not in all TS libs
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+      // @ts-ignore
+      const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+      graphemes = Array.from(segmenter.segment(text), (s: { segment: string }) => s.segment)
+    } else {
+      // Fallback for older browsers - use spread operator which handles some cases
+      graphemes = [...text]
+    }
+    
+    const revealedCount = prog * graphemes.length
     
     // Use album art color for glow
     const glowR = Math.min(255, r + 50)
@@ -352,7 +364,7 @@ export default function FullscreenPlayer({ onExit }: FullscreenPlayerProps) {
 
     return (
       <>
-        {chars.map((char, i) => {
+        {graphemes.map((char, i) => {
           const isRevealed = i < revealedCount
           const waveDelay = i * 0.05
           

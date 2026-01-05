@@ -249,17 +249,29 @@ export default function LyricsPanel() {
     : `0 0 15px ${accentColor}, 0 0 30px ${accentColor}`
 
   // Render animated text with karaoke-style fill and subtle wave
+  // Uses Intl.Segmenter for proper Unicode grapheme handling (Bengali, Arabic, etc.)
   const renderAnimatedText = useCallback((text: string, isCurrentLine: boolean, prog: number) => {
     if (!isCurrentLine) {
       return <span>{text}</span>
     }
 
-    const chars = text.split('')
-    const revealedCount = prog * chars.length
+    // Use Intl.Segmenter for proper grapheme clustering (handles Bengali, Arabic, emoji, etc.)
+    let graphemes: string[]
+    // @ts-ignore - Intl.Segmenter is available in modern browsers but not in all TS libs
+    if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+      // @ts-ignore
+      const segmenter = new Intl.Segmenter('en', { granularity: 'grapheme' })
+      graphemes = Array.from(segmenter.segment(text), (s: { segment: string }) => s.segment)
+    } else {
+      // Fallback for older browsers - use spread operator which handles some cases
+      graphemes = [...text]
+    }
+    
+    const revealedCount = prog * graphemes.length
 
     return (
       <>
-        {chars.map((char, i) => {
+        {graphemes.map((char, i) => {
           const isRevealed = i < revealedCount
           // Subtle wave animation - each character has a slight delay
           const waveDelay = i * 0.05 // 50ms delay between each character

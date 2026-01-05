@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://vyra.fasthand.study/">
-    <img src="https://img.shields.io/badge/Download-v1.0.6-blue?style=flat-square" alt="Download">
+    <img src="https://img.shields.io/badge/Download-v1.0.7-blue?style=flat-square" alt="Download">
   </a>
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
@@ -43,24 +43,19 @@
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 - 🎮 **Discord RPC** — Show what you're listening to on Discord
 
-## 🆕 What's New in v1.0.6
+## 🆕 What's New in v1.0.7
 
-### Fullscreen Player Improvements
-- **Auto-hide Controls** — Cursor and controls auto-hide after 3 seconds of inactivity
-- **Smooth Transitions** — Controls fade out with smooth 300ms transition
-- **Centered Content** — Album art and lyrics smoothly slide to center when controls are hidden
-- **Improved Seek Bar** — Better drag interaction for the progress bar
-
-### Code Cleanup
-- **Removed YouTube Music Sign-in** — Removed unused YouTube Music account sync feature
-- **Cleaner Codebase** — Removed orphaned code and duplicate functions
+### Bug Fixes
+- **Fixed Lyrics for Non-Latin Scripts** — Bengali, Arabic, Hindi, and other non-Latin lyrics now display correctly in karaoke mode
+- **Fixed Player State on Startup** — Player now shows saved track, progress, and duration immediately on app start
+- **Improved Fullscreen Seek Bar** — Better drag interaction for the progress bar in fullscreen mode
 
 ## 🚀 Installation
 
 ### Windows
 
 1. Download the latest installer from [vyra.fasthand.study](https://vyra.fasthand.study/)
-2. Run `VYRA_1.0.6_x64-setup.exe`
+2. Run `VYRA_1.0.7_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
