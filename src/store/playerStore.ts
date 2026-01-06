@@ -2,7 +2,21 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { Song, youtube } from '../api/youtube'
 
-// Helper function to extend queue with related songs
+// Track recently played songs with timestamps to prevent duplicates
+interface RecentlyPlayedTrack {
+  id: string
+  timestamp: number
+}
+
+// Helper function to check if a song was played recently (within 30 minutes)
+const wasPlayedRecently = (trackId: string, recentTracks: RecentlyPlayedTrack[]): boolean => {
+  const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000) // 30 minutes in milliseconds
+  return recentTracks.some(track => 
+    track.id === trackId && track.timestamp > thirtyMinutesAgo
+  )
+}
+
+// Helper function to extend queue with related songs (avoiding recent duplicates)
 const extendQueue = async (
   trackId: string,
   getState: () => any,
@@ -12,9 +26,13 @@ const extendQueue = async (
     const relatedSongs = await youtube.getRadio(trackId)
     
     if (relatedSongs.length > 0) {
-      const { queue: currentQueue, queueIndex: currentIndex } = getState()
+      const { queue: currentQueue, queueIndex: currentIndex, recentlyPlayedTracks } = getState()
       const existingIds = new Set(currentQueue.map((s: Song) => s.id))
-      const newSongs = relatedSongs.filter(s => !existingIds.has(s.id))
+      
+      // Filter out songs that are already in queue OR were played in last 30 minutes
+      const newSongs = relatedSongs.filter(s => 
+        !existingIds.has(s.id) && !wasPlayedRecently(s.id, recentlyPlayedTracks)
+      )
       
       if (newSongs.length > 0) {
         const currentUpcoming = currentQueue.length - currentIndex - 1
@@ -146,6 +164,7 @@ interface PlayerState {
   eqFilters: BiquadFilterNode[]
   likedSongs: Song[]
   recentlyPlayed: Song[]
+  recentlyPlayedTracks: RecentlyPlayedTrack[] // Track IDs with timestamps for duplicate prevention
   savedPosition: number // Save position in seconds for restore
   
   initAudio: () => void
@@ -168,6 +187,7 @@ interface PlayerState {
   isLiked: (trackId: string) => boolean
   addToRecentlyPlayed: (track: Song) => void
   savePosition: () => void
+  cleanupOldRecentTracks: () => void
 }
 
 export const usePlayerStore = create<PlayerState>()(
@@ -189,6 +209,7 @@ export const usePlayerStore = create<PlayerState>()(
   eqFilters: [],
   likedSongs: [],
   recentlyPlayed: [],
+  recentlyPlayedTracks: [],
   savedPosition: 0,
 
   initAudio: () => {
@@ -687,12 +708,38 @@ export const usePlayerStore = create<PlayerState>()(
   },
 
   addToRecentlyPlayed: (track) => {
-    const { recentlyPlayed } = get()
+    const { recentlyPlayed, recentlyPlayedTracks } = get()
     // Remove if already exists (to move to top)
     const filtered = recentlyPlayed.filter(s => s.id !== track.id)
     // Add to beginning, limit to 100
     const updated = [track, ...filtered].slice(0, 100)
-    set({ recentlyPlayed: updated })
+    
+    // Add to timestamp tracking for duplicate prevention
+    const newRecentTrack: RecentlyPlayedTrack = {
+      id: track.id,
+      timestamp: Date.now()
+    }
+    const filteredTracks = recentlyPlayedTracks.filter(t => t.id !== track.id)
+    const updatedTracks = [newRecentTrack, ...filteredTracks].slice(0, 200) // Keep more for 30min window
+    
+    set({ 
+      recentlyPlayed: updated,
+      recentlyPlayedTracks: updatedTracks
+    })
+    
+    // Cleanup old tracks (older than 30 minutes)
+    get().cleanupOldRecentTracks()
+  },
+
+  cleanupOldRecentTracks: () => {
+    const { recentlyPlayedTracks } = get()
+    const thirtyMinutesAgo = Date.now() - (30 * 60 * 1000)
+    const cleaned = recentlyPlayedTracks.filter(track => track.timestamp > thirtyMinutesAgo)
+    
+    // Only update if something changed
+    if (cleaned.length !== recentlyPlayedTracks.length) {
+      set({ recentlyPlayedTracks: cleaned })
+    }
   },
 
   savePosition: () => {
@@ -707,6 +754,9 @@ export const usePlayerStore = create<PlayerState>()(
     
     // Initialize audio element first
     initAudio()
+    
+    // Cleanup old recent tracks on app start
+    get().cleanupOldRecentTracks()
     
     // If we have a saved track, show it in the player UI with saved state
     if (currentTrack) {
@@ -729,6 +779,7 @@ export const usePlayerStore = create<PlayerState>()(
       partialize: (state) => ({ 
         likedSongs: state.likedSongs,
         recentlyPlayed: state.recentlyPlayed,
+        recentlyPlayedTracks: state.recentlyPlayedTracks,
         volume: state.volume,
         currentTrack: state.currentTrack,
         queue: state.queue,

@@ -58,6 +58,9 @@ interface AppState {
   downloadQuality: DownloadQuality
   downloads: DownloadProgress[]
   downloadedSongs: Song[]
+  // Offline mode
+  isOffline: boolean
+  offlineDetected: boolean
   // Caching settings
   cacheEnabled: boolean
   cachedSongs: Song[]
@@ -143,6 +146,9 @@ interface AppState {
   removeFromCache: (trackId: string) => void
   clearCache: () => void
   isCached: (trackId: string) => boolean
+  // Offline mode
+  setOffline: (offline: boolean) => void
+  checkOnlineStatus: () => Promise<void>
   // Playlist functions
   createPlaylist: (name: string) => string
   deletePlaylist: (playlistId: string) => void
@@ -189,6 +195,9 @@ export const useAppStore = create<AppState>()(
       downloadQuality: 'high',
       downloads: [],
       downloadedSongs: [],
+      // Offline mode - don't persist these
+      isOffline: false,
+      offlineDetected: false,
       // Caching
       cacheEnabled: true,
       cachedSongs: [],
@@ -819,6 +828,46 @@ export const useAppStore = create<AppState>()(
 
       clearPlaylists: () => {
         set({ userPlaylists: [], selectedUserPlaylist: null })
+      },
+
+      // Offline mode functions
+      setOffline: (offline) => {
+        set({ isOffline: offline })
+        // Only set offlineDetected when going offline, not when coming back online
+        if (offline) {
+          set({ offlineDetected: true })
+        }
+      },
+
+      checkOnlineStatus: async () => {
+        // First check navigator.onLine
+        if (!navigator.onLine) {
+          set({ isOffline: true, offlineDetected: true })
+          return
+        }
+
+        try {
+          // Try to fetch a small resource from YouTube
+          const controller = new AbortController()
+          const timeoutId = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+          
+          const response = await fetch('https://www.youtube.com/favicon.ico', {
+            method: 'HEAD',
+            signal: controller.signal,
+            cache: 'no-cache'
+          })
+          
+          clearTimeout(timeoutId)
+          
+          if (response.ok) {
+            // We're online - clear offline state
+            set({ isOffline: false, offlineDetected: false })
+          } else {
+            set({ isOffline: true, offlineDetected: true })
+          }
+        } catch {
+          set({ isOffline: true, offlineDetected: true })
+        }
       }
     }),
     {

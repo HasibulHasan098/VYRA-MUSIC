@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://vyra.fasthand.study/">
-    <img src="https://img.shields.io/badge/Download-v1.0.8-blue?style=flat-square" alt="Download">
+    <img src="https://img.shields.io/badge/Download-v1.0.9-blue?style=flat-square" alt="Download">
   </a>
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
@@ -43,15 +43,13 @@
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 - 🎮 **Discord RPC** — Show what you're listening to on Discord
 
-## 🆕 What's New in v1.0.8
+## 🆕 What's New in v1.0.9
 
 ### New Features
-- **Windows Taskbar Thumbnail Toolbar** — Media control buttons (Previous, Play/Pause, Next) now appear on the Windows taskbar thumbnail preview
-- **Dynamic Play/Pause Button** — Taskbar button automatically switches between play and pause icons based on playback state
-
-### Improvements
-- **Professional Icons** — Using high-quality PNG icons for taskbar buttons with proper transparency and anti-aliasing
-- **Better Windows Integration** — Enhanced native Windows experience with thumbnail toolbar controls
+- ✨ **Offline Mode** — Automatically detects when you're offline and shows cached songs
+- 🎵 **Smart Queue Management** — Prevents duplicate songs in queue within 30 minutes
+- 🎨 **Improved Mini Player** — Better UI with perfect album art display and responsive layout
+- 🔧 **Bug Fixes** — Various stability improvements and fixes
 
 
 ## 🚀 Installation
@@ -59,7 +57,7 @@
 ### Windows
 
 1. Download the latest installer from [vyra.fasthand.study](https://vyra.fasthand.study/)
-2. Run `VYRA_1.0.8_x64-setup.exe`
+2. Run `VYRA_1.0.9_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -83,14 +81,26 @@ npm run tauri:build
 
 ## 🛠️ Tech Stack
 
-| Technology | Purpose |
-|------------|---------|
-| [Tauri](https://tauri.app/) | Desktop framework |
-| [React](https://react.dev/) | UI library |
-| [TypeScript](https://www.typescriptlang.org/) | Type safety |
-| [Tailwind CSS](https://tailwindcss.com/) | Styling |
-| [Zustand](https://zustand-demo.pmnd.rs/) | State management |
-| [Rust](https://www.rust-lang.org/) | Backend & audio proxy |
+### Frontend
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| [React](https://react.dev/) | 18.2 | UI library |
+| [TypeScript](https://www.typescriptlang.org/) | 5.3 | Type safety |
+| [Vite](https://vitejs.dev/) | 5.0 | Build tool & dev server |
+| [Tailwind CSS](https://tailwindcss.com/) | 3.3 | Utility-first CSS framework |
+| [Zustand](https://zustand-demo.pmnd.rs/) | 4.4 | State management |
+| [Lucide React](https://lucide.dev/) | 0.294 | Icon library |
+
+### Backend
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| [Tauri](https://tauri.app/) | 2.0 | Desktop framework |
+| [Rust](https://www.rust-lang.org/) | 2021 Edition | Backend & audio proxy |
+| [Reqwest](https://docs.rs/reqwest/) | 0.12 | HTTP client |
+| [Warp](https://docs.rs/warp/) | 0.3 | Web server for audio streaming |
+| [Tokio](https://tokio.rs/) | 1.0 | Async runtime |
+| [Souvlaki](https://docs.rs/souvlaki/) | 0.7 | Media controls integration |
+| [Discord RPC](https://docs.rs/discord-rich-presence/) | 0.2 | Discord Rich Presence |
 
 ## 📁 Project Structure
 
@@ -109,14 +119,36 @@ vyra/
 
 ## ⚙️ Configuration
 
-Settings are available in the app:
+Settings are available in the app (click the gear icon):
 
-- **Theme** — Dark/Light mode
+### General Settings
+- **Theme** — Dark/Light mode toggle
+- **Accent Color** — Customize the app's accent color
+- **Close to Tray** — Minimize to system tray instead of closing
+- **Discord Rich Presence** — Show what you're listening to on Discord
+- **Autoplay** — Automatically play related songs when queue ends
+
+### Download Settings
 - **Download Location** — Choose where to save downloads
 - **Download Quality** — Normal (128kbps), High (256kbps), Very High (320kbps)
-- **Close to Tray** — Minimize to system tray on close
-- **Cache Music** — Cache songs for faster playback
-- **Check for Updates** — Manually check for new versions
+
+### Cache Settings
+- **Enable Cache** — Cache songs for faster playback and offline listening
+- **Max Cached Songs** — Set the maximum number of songs to cache (1-999)
+
+### Keybinds
+- **In-App Keybinds** — Customize keyboard shortcuts within the app
+- **Global Keybinds** — Control playback even when app is in background
+  - Play/Pause, Next, Previous, Volume Up/Down, Mute, Like, Lyrics
+
+### Equalizer
+- **10+ Presets** — Acoustic, Bass Booster, Classical, Dance, Electronic, Hip-Hop, Jazz, Pop, Rock, and more
+- **Custom EQ** — Create your own equalizer settings with 6 bands (60Hz, 150Hz, 400Hz, 1kHz, 2.4kHz, 15kHz)
+
+### Data Management
+- **Export Data** — Backup your liked songs, playlists, and settings to a `.vyra` file
+- **Import Data** — Restore your data from a backup file
+- **Clear Data** — Clear history, liked songs, downloads, playlists, or followed artists
 
 ## 🎤 Lyrics
 
@@ -125,8 +157,39 @@ VYRA uses [LRCLIB](https://lrclib.net/) for synchronized lyrics:
 - Lyrics automatically sync with playback
 - Click any line to seek to that position
 - Works in both normal and fullscreen modes
+- Karaoke-style word-by-word animation
 
-## � CWindows Taskbar Thumbnail Toolbar (For Tauri Developers)
+## 🎹 Keyboard Shortcuts
+
+### Default In-App Shortcuts
+- `Space` — Play/Pause
+- `→` — Next track
+- `←` — Previous track
+- `↑` — Volume up
+- `↓` — Volume down
+- `M` — Mute/Unmute
+- `L` — Like/Unlike current song
+- `K` — Toggle lyrics
+
+### Global Shortcuts (Optional)
+- `Ctrl+Space` — Play/Pause
+- `Ctrl+→` — Next track
+- `Ctrl+←` — Previous track
+- `Ctrl+↑` — Volume up
+- `Ctrl+↓` — Volume down
+- `Ctrl+M` — Mute/Unmute
+
+> **Note:** All shortcuts are customizable in Settings → Keybinds
+
+## 🎮 Media Controls
+
+VYRA integrates with system media controls:
+- **Windows Taskbar** — Previous, Play/Pause, Next buttons on taskbar thumbnail
+- **System Tray** — Quick access to playback controls
+- **Media Keys** — Use keyboard media keys to control playback
+- **Discord RPC** — Show currently playing song on Discord profile
+
+## 🪟 Windows Taskbar Thumbnail Toolbar (For Tauri Developers)
 
 VYRA implements Windows Taskbar Thumbnail Toolbar buttons using the unofficial method with `ITaskbarList3` COM interface. This guide helps other Tauri developers implement similar functionality.
 
@@ -210,7 +273,23 @@ This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
-## Disclaimer: VYRA is an independent, open-source project and is not affiliated with, endorsed by, or associated with YouTube, YouTube Music, or Google in any way. VYRA simply provides an alternative interface to access publicly available content. All trademarks and brand names belong to their respective owners.
+## ⚠️ Disclaimer
+
+VYRA is an independent, open-source project and is not affiliated with, endorsed by, or associated with YouTube, YouTube Music, or Google in any way. VYRA simply provides an alternative interface to access publicly available content from YouTube Music. All trademarks and brand names belong to their respective owners.
+
+## 🐛 Known Issues
+
+- Some songs may not have synchronized lyrics available
+- Download feature requires desktop app (not available in web version)
+- First-time cache building may take a few seconds
+
+## 💡 Tips & Tricks
+
+- **Quick Search** — Start typing anywhere to search
+- **Right-Click Menu** — Right-click on any song for more options
+- **Mini Player** — Click the picture-in-picture icon for a compact player window
+- **Fullscreen Mode** — Click the fullscreen icon for an immersive experience
+- **Offline Mode** — Cached songs automatically appear when you're offline
 
 
 ## 👨‍💻 Author

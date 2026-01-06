@@ -11,17 +11,47 @@ export default function HomeView() {
   const { setQueue, likedSongs, recentlyPlayed, currentTrack, isPlaying, togglePlay } = usePlayerStore()
   const [favoriteArtistSongs, setFavoriteArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
   const [followedArtistSongs, setFollowedArtistSongs] = useState<{ artist: string; songs: Song[] }[]>([])
-  const [isOffline, setIsOffline] = useState(!navigator.onLine)
+  const [isOffline, setIsOffline] = useState(false)
 
-  // Listen for online/offline events
+  // Test actual connectivity by trying to fetch from YouTube
+  const testConnection = async () => {
+    try {
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 3000)
+      
+      // Try to fetch YouTube Music favicon (small and fast)
+      await fetch('https://music.youtube.com/favicon.ico', {
+        method: 'HEAD',
+        signal: controller.signal,
+        cache: 'no-cache',
+        mode: 'no-cors' // Avoid CORS issues
+      })
+      
+      clearTimeout(timeoutId)
+      // With no-cors, if fetch doesn't throw, we're online
+      setIsOffline(false)
+    } catch (error) {
+      // Any error means we're offline
+      setIsOffline(true)
+    }
+  }
+
+  // Check connection on mount and periodically
   useEffect(() => {
-    const handleOnline = () => setIsOffline(false)
+    testConnection()
+    
+    // Recheck every 10 seconds
+    const interval = setInterval(testConnection, 10000)
+    
+    // Also listen to browser events
+    const handleOnline = () => testConnection()
     const handleOffline = () => setIsOffline(true)
     
     window.addEventListener('online', handleOnline)
     window.addEventListener('offline', handleOffline)
     
     return () => {
+      clearInterval(interval)
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }

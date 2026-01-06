@@ -1,27 +1,30 @@
 import { useEffect, useState, useRef, useMemo, useCallback } from 'react'
-import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, X, GripHorizontal, Music, Mic2 } from 'lucide-react'
-import { usePlayerStore } from '../store/playerStore'
+import { Play, Pause, SkipBack, SkipForward, Shuffle, Repeat, Repeat1, Volume2, VolumeX, Volume1, X, Minimize2, Music, Mic2 } from 'lucide-react'
+import { usePlayerStore, Song } from '../store/playerStore'
 import { fetchLyrics, LyricsResult } from '../api/lyrics'
 
-// Extract dominant color from image
+// Extract dominant color from image with better sampling
 const extractColor = (img: HTMLImageElement): { r: number; g: number; b: number } => {
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
-  if (!ctx) return { r: 100, g: 100, b: 100 }
+  if (!ctx) return { r: 30, g: 30, b: 40 }
 
-  canvas.width = 50
-  canvas.height = 50
+  canvas.width = 100
+  canvas.height = 100
   
   try {
-    ctx.drawImage(img, 0, 0, 50, 50)
-    const imageData = ctx.getImageData(0, 0, 50, 50).data
+    ctx.drawImage(img, 0, 0, 100, 100)
+    const imageData = ctx.getImageData(0, 0, 100, 100).data
     let r = 0, g = 0, b = 0, count = 0
 
-    for (let i = 0; i < imageData.length; i += 16) {
+    // Sample more points for better color extraction
+    for (let i = 0; i < imageData.length; i += 20) {
       const pr = imageData[i]
       const pg = imageData[i + 1]
       const pb = imageData[i + 2]
-      if (pr + pg + pb > 50 && pr + pg + pb < 700) {
+      const brightness = pr + pg + pb
+      // Skip very dark and very bright pixels
+      if (brightness > 80 && brightness < 650) {
         r += pr
         g += pg
         b += pb
@@ -29,7 +32,7 @@ const extractColor = (img: HTMLImageElement): { r: number; g: number; b: number 
       }
     }
 
-    if (count === 0) return { r: 100, g: 100, b: 100 }
+    if (count === 0) return { r: 30, g: 30, b: 40 }
     
     return {
       r: Math.round(r / count),
@@ -37,22 +40,30 @@ const extractColor = (img: HTMLImageElement): { r: number; g: number; b: number 
       b: Math.round(b / count)
     }
   } catch {
-    return { r: 100, g: 100, b: 100 }
+    return { r: 30, g: 30, b: 40 }
   }
 }
 
 export default function MiniPlayer() {
-  const { 
-    currentTrack, isPlaying, volume, progress, duration, shuffle, repeat, audioElement,
-    togglePlay, setVolume, seek, toggleShuffle, cycleRepeat, nextTrack, prevTrack
-  } = usePlayerStore()
+  // Get initial state from store (persisted)
+  const storeState = usePlayerStore()
+  
+  // Local state that will be updated from main window via events
+  const [currentTrack, setCurrentTrack] = useState<Song | null>(storeState.currentTrack)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [volume, setVolumeState] = useState(storeState.volume)
+  const [progress, setProgress] = useState(0)
+  const [duration, setDuration] = useState(storeState.duration)
+  const [shuffle, setShuffle] = useState(storeState.shuffle)
+  const [repeat, setRepeat] = useState(storeState.repeat)
+  const [currentTime, setCurrentTime] = useState(0)
+  
   const [imgError, setImgError] = useState(false)
   const [showLyrics, setShowLyrics] = useState(false)
   const [lyrics, setLyrics] = useState<LyricsResult | null>(null)
   const [currentLineIndex, setCurrentLineIndex] = useState(-1)
   const [lineProgress, setLineProgress] = useState(0)
-  const [dominantColor, setDominantColor] = useState({ r: 80, g: 80, b: 120 })
-  const [currentTime, setCurrentTime] = useState(0)
+  const [dominantColor, setDominantColor] = useState({ r: 30, g: 30, b: 40 })
   const containerRef = useRef<HTMLDivElement>(null)
   const lineRefs = useRef<(HTMLDivElement | null)[]>([])
 
@@ -60,27 +71,60 @@ export default function MiniPlayer() {
     setImgError(false)
   }, [currentTrack?.id])
 
-  // High-frequency time update for smooth animation
+  // Listen for player state updates from main window
   useEffect(() => {
-    if (!audioElement) return
+    if (typeof window === 'undefined' || !window.__TAURI__) return
 
-    const updateTime = () => {
-      setCurrentTime(audioElement.currentTime)
+    let unlisten: (() => void) | undefined
+
+    const setupListener = async () => {
+      const { listen } = await import('@tauri-apps/api/event')
+      
+      unlisten = await listen<{
+        currentTime: number
+        progress: number
+        duration: number
+        isPlaying: boolean
+        volume: number
+        currentTrackId: string | null
+      }>('player-state-update', (event) => {
+        const state = event.payload
+        setCurrentTime(state.currentTime)
+        setProgress(state.progress)
+        setDuration(state.duration)
+        setIsPlaying(state.isPlaying)
+        setVolumeState(state.volume)
+        
+        // Update track if it changed
+        if (state.currentTrackId !== currentTrack?.id) {
+          const newTrack = storeState.queue.find(t => t.id === state.currentTrackId)
+          if (newTrack) {
+            setCurrentTrack(newTrack)
+          }
+        }
+      })
     }
 
-    audioElement.addEventListener('timeupdate', updateTime)
-    const interval = setInterval(updateTime, 50)
+    setupListener()
 
     return () => {
-      audioElement.removeEventListener('timeupdate', updateTime)
-      clearInterval(interval)
+      if (unlisten) unlisten()
     }
-  }, [audioElement])
+  }, [currentTrack?.id, storeState.queue])
 
-  // Extract color from album art
+  // Sync with store state changes (shuffle, repeat, queue updates)
+  useEffect(() => {
+    setShuffle(storeState.shuffle)
+    setRepeat(storeState.repeat)
+    if (storeState.currentTrack?.id !== currentTrack?.id) {
+      setCurrentTrack(storeState.currentTrack)
+    }
+  }, [storeState.shuffle, storeState.repeat, storeState.currentTrack])
+
+  // Extract color from album art with better processing
   useEffect(() => {
     if (!currentTrack?.thumbnail) {
-      setDominantColor({ r: 80, g: 80, b: 120 })
+      setDominantColor({ r: 30, g: 30, b: 40 })
       return
     }
 
@@ -90,24 +134,34 @@ export default function MiniPlayer() {
       const color = extractColor(img)
       const brightness = (color.r * 299 + color.g * 587 + color.b * 114) / 1000
       
-      if (brightness > 180) {
+      // Adjust color for better visual appeal
+      if (brightness > 200) {
+        // Very bright - darken significantly
         setDominantColor({
-          r: Math.max(60, Math.round(color.r * 0.4)),
-          g: Math.max(60, Math.round(color.g * 0.4)),
-          b: Math.max(80, Math.round(color.b * 0.5))
+          r: Math.max(40, Math.round(color.r * 0.3)),
+          g: Math.max(40, Math.round(color.g * 0.3)),
+          b: Math.max(50, Math.round(color.b * 0.35))
         })
-      } else if (brightness > 120) {
+      } else if (brightness > 140) {
+        // Bright - darken moderately
         setDominantColor({
-          r: Math.round(color.r * 0.8),
-          g: Math.round(color.g * 0.8),
-          b: Math.round(color.b * 0.9)
+          r: Math.round(color.r * 0.6),
+          g: Math.round(color.g * 0.6),
+          b: Math.round(color.b * 0.7)
+        })
+      } else if (brightness < 60) {
+        // Very dark - brighten
+        setDominantColor({
+          r: Math.min(100, Math.round(color.r * 1.5)),
+          g: Math.min(100, Math.round(color.g * 1.5)),
+          b: Math.min(120, Math.round(color.b * 1.6))
         })
       } else {
-        const boost = 1.3
+        // Good range - slight adjustment
         setDominantColor({
-          r: Math.min(255, Math.round(color.r * boost)),
-          g: Math.min(255, Math.round(color.g * boost)),
-          b: Math.min(255, Math.round(color.b * boost))
+          r: Math.round(color.r * 1.1),
+          g: Math.round(color.g * 1.1),
+          b: Math.round(color.b * 1.2)
         })
       }
     }
@@ -189,11 +243,12 @@ export default function MiniPlayer() {
     }
   }, [currentLineIndex])
 
-  const handleLineClick = useCallback((time: number) => {
-    if (audioElement) {
-      audioElement.currentTime = time
+  const handleLineClick = useCallback(async (time: number) => {
+    if (typeof window !== 'undefined' && window.__TAURI__) {
+      const { emit } = await import('@tauri-apps/api/event')
+      await emit('seek-to', time)
     }
-  }, [audioElement])
+  }, [])
 
   const formatTime = (seconds: number) => {
     if (!seconds || !isFinite(seconds)) return '0:00'
@@ -205,6 +260,48 @@ export default function MiniPlayer() {
   const RepeatIcon = repeat === 'one' ? Repeat1 : Repeat
   const currentTimeDisplay = progress * duration
 
+  // Send commands to main window
+  const sendCommand = useCallback(async (command: string) => {
+    if (typeof window !== 'undefined' && window.__TAURI__) {
+      const { emit } = await import('@tauri-apps/api/event')
+      await emit('media-control', command)
+    }
+  }, [])
+
+  const handleTogglePlay = useCallback(() => {
+    sendCommand('play_pause')
+  }, [sendCommand])
+
+  const handleNextTrack = useCallback(() => {
+    sendCommand('next')
+  }, [sendCommand])
+
+  const handlePrevTrack = useCallback(() => {
+    sendCommand('prev')
+  }, [sendCommand])
+
+  const handleToggleShuffle = useCallback(() => {
+    storeState.toggleShuffle()
+  }, [storeState])
+
+  const handleCycleRepeat = useCallback(() => {
+    storeState.cycleRepeat()
+  }, [storeState])
+
+  const handleVolumeChange = useCallback(async (newVolume: number) => {
+    if (typeof window !== 'undefined' && window.__TAURI__) {
+      const { emit } = await import('@tauri-apps/api/event')
+      await emit('set-volume', newVolume)
+    }
+  }, [])
+
+  const handleSeek = useCallback(async (time: number) => {
+    if (typeof window !== 'undefined' && window.__TAURI__) {
+      const { emit } = await import('@tauri-apps/api/event')
+      await emit('seek-to', time * duration)
+    }
+  }, [duration])
+
   const closeMiniPlayer = async () => {
     if (typeof window !== 'undefined' && '__TAURI__' in window) {
       const { getCurrentWindow } = await import('@tauri-apps/api/window')
@@ -215,16 +312,24 @@ export default function MiniPlayer() {
   const { r, g, b } = dominantColor
   const brightness = (r * 299 + g * 587 + b * 114) / 1000
   const accentColor = `rgb(${r}, ${g}, ${b})`
-  const accentColorBright = brightness > 150 
-    ? `rgb(${Math.max(100, r - 30)}, ${Math.max(100, g - 30)}, ${Math.max(120, b - 20)})`
-    : `rgb(${Math.min(255, r + 80)}, ${Math.min(255, g + 80)}, ${Math.min(255, b + 80)})`
+  const accentColorBright = brightness > 140 
+    ? `rgb(${Math.max(120, r - 20)}, ${Math.max(120, g - 20)}, ${Math.max(140, b - 10)})`
+    : `rgb(${Math.min(255, r + 100)}, ${Math.min(255, g + 100)}, ${Math.min(255, b + 100)})`
 
   const backgroundStyle = showLyrics ? {
     background: `linear-gradient(180deg, 
-      rgba(${Math.floor(r * 0.6)}, ${Math.floor(g * 0.6)}, ${Math.floor(b * 0.6)}, 0.5) 0%, 
-      rgba(${Math.floor(r * 0.15)}, ${Math.floor(g * 0.15)}, ${Math.floor(b * 0.15)}, 0.95) 40%,
-      rgb(12, 12, 18) 100%)`,
-  } : { background: 'black' }
+      rgba(${Math.floor(r * 0.5)}, ${Math.floor(g * 0.5)}, ${Math.floor(b * 0.5)}, 0.6) 0%, 
+      rgba(${Math.floor(r * 0.2)}, ${Math.floor(g * 0.2)}, ${Math.floor(b * 0.2)}, 0.95) 30%,
+      rgb(10, 10, 15) 100%)`,
+  } : {
+    background: `linear-gradient(180deg, 
+      rgba(${Math.floor(r * 0.4)}, ${Math.floor(g * 0.4)}, ${Math.floor(b * 0.4)}, 0.3) 0%, 
+      rgb(12, 12, 16) 50%,
+      rgb(8, 8, 12) 100%)`
+  }
+
+  // Get volume icon based on level
+  const VolumeIcon = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2
 
   // Render animated text
   const renderAnimatedText = useCallback((text: string, isCurrentLine: boolean, prog: number) => {
@@ -257,11 +362,17 @@ export default function MiniPlayer() {
 
   return (
     <div className="h-screen w-screen text-white flex flex-col overflow-hidden select-none" style={backgroundStyle}>
-      {/* Drag handle & close */}
-      <div data-tauri-drag-region className="flex items-center justify-between px-3 py-2 shrink-0">
-        <GripHorizontal size={16} className="text-gray-500" />
-        <button onClick={closeMiniPlayer} className="p-1 hover:bg-white/10 rounded">
-          <X size={16} />
+      {/* Header with drag handle & close - Fixed height */}
+      <div data-tauri-drag-region className="flex items-center justify-between px-4 py-3 shrink-0 backdrop-blur-sm bg-black/20" style={{ minHeight: '48px' }}>
+        <div className="flex items-center gap-2">
+          <Minimize2 size={14} className="text-gray-500" />
+          <span className="text-xs font-medium text-gray-400">Mini Player</span>
+        </div>
+        <button 
+          onClick={closeMiniPlayer} 
+          className="p-1.5 hover:bg-white/10 rounded-full transition-colors shrink-0"
+        >
+          <X size={16} className="text-gray-400 hover:text-white" />
         </button>
       </div>
 
@@ -269,11 +380,11 @@ export default function MiniPlayer() {
         /* Lyrics View */
         <div 
           ref={containerRef}
-          className="flex-1 overflow-y-auto px-4"
+          className="flex-1 overflow-y-auto px-5 min-h-0"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           <style>{`div::-webkit-scrollbar { display: none; }`}</style>
-          <div className="min-h-full flex flex-col pt-2 pb-[30vh]">
+          <div className="min-h-full flex flex-col pt-4 pb-[35vh]">
             {lyrics.syncedLyrics.map((line, index) => {
               const isCurrentLine = index === currentLineIndex
               const isPastLine = index < currentLineIndex
@@ -283,13 +394,12 @@ export default function MiniPlayer() {
                   key={index}
                   ref={el => lineRefs.current[index] = el}
                   onClick={() => handleLineClick(line.time)}
-                  className="py-1.5 cursor-pointer font-bold leading-snug"
+                  className="py-2 cursor-pointer font-bold leading-tight transition-all duration-300"
                   style={{
-                    fontSize: isCurrentLine ? '1.1rem' : '0.95rem',
-                    color: isPastLine ? 'rgba(255,255,255,0.2)' : isCurrentLine ? undefined : 'rgba(255,255,255,0.35)',
-                    transform: isCurrentLine ? 'scale(1.02)' : 'scale(1)',
+                    fontSize: isCurrentLine ? '1.15rem' : '0.95rem',
+                    color: isPastLine ? 'rgba(255,255,255,0.25)' : isCurrentLine ? undefined : 'rgba(255,255,255,0.4)',
+                    transform: isCurrentLine ? 'scale(1.03)' : 'scale(1)',
                     transformOrigin: 'left center',
-                    transition: 'transform 0.3s ease, font-size 0.3s ease',
                   }}
                 >
                   {renderAnimatedText(line.text, isCurrentLine, lineProgress)}
@@ -299,74 +409,62 @@ export default function MiniPlayer() {
           </div>
         </div>
       ) : (
-        /* Album art view */
-        <div className="flex-1 flex items-center justify-center px-6 py-2">
+        /* Album Art View - Responsive sizing with proper spacing */
+        <div className="flex-1 flex flex-col items-center justify-center px-4 min-h-0" style={{ paddingTop: '1rem', paddingBottom: '1rem' }}>
           {currentTrack ? (
-            imgError ? (
-              <div className="w-40 h-40 rounded-lg bg-gray-800 flex items-center justify-center">
-                <Music size={48} className="text-gray-600" />
-              </div>
-            ) : (
-              <div className="w-40 h-40 rounded-lg overflow-hidden shadow-2xl">
-                <img 
-                  src={`https://img.youtube.com/vi/${currentTrack.id}/maxresdefault.jpg`} 
-                  alt={currentTrack.title}
-                  className="w-full h-full object-cover scale-[1.15]"
-                  onError={() => setImgError(true)}
-                />
-              </div>
-            )
+            <div className="relative group w-full" style={{ maxWidth: '260px', aspectRatio: '1/1' }}>
+              {imgError ? (
+                <div className="w-full h-full rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center shadow-2xl">
+                  <Music size={56} className="text-gray-600" />
+                </div>
+              ) : (
+                <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl ring-1 ring-white/10">
+                  <img 
+                    src={`https://img.youtube.com/vi/${currentTrack.id}/maxresdefault.jpg`} 
+                    alt={currentTrack.title}
+                    className="w-full h-full object-cover"
+                    onError={() => setImgError(true)}
+                  />
+                  {/* Subtle overlay for depth */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent" />
+                </div>
+              )}
+              {/* Glow effect */}
+              <div 
+                className="absolute inset-0 -z-10 blur-3xl opacity-40 rounded-2xl"
+                style={{ 
+                  background: `radial-gradient(circle, ${accentColor} 0%, transparent 70%)`,
+                  transform: 'scale(1.1)'
+                }}
+              />
+            </div>
           ) : (
-            <div className="w-40 h-40 rounded-lg bg-gray-800 flex items-center justify-center">
-              <Music size={48} className="text-gray-600" />
+            <div className="w-full rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center shadow-2xl" style={{ maxWidth: '260px', aspectRatio: '1/1' }}>
+              <Music size={56} className="text-gray-600" />
             </div>
           )}
         </div>
       )}
 
-      {/* Controls */}
-      <div className="flex items-center justify-center gap-3 py-2 shrink-0">
-        <button onClick={() => setVolume(volume > 0 ? 0 : 0.8)} className="p-1 text-gray-400 hover:text-white">
-          {volume === 0 ? <VolumeX size={16} /> : <Volume2 size={16} />}
-        </button>
-        <button 
-          onClick={() => setShowLyrics(!showLyrics)} 
-          className={`p-1 ${showLyrics ? 'text-ios-blue' : 'text-gray-400 hover:text-white'}`}
-          title="Toggle Lyrics"
-        >
-          <Mic2 size={16} />
-        </button>
-        <button onClick={toggleShuffle} className={`p-1 ${shuffle ? 'text-ios-blue' : 'text-gray-400 hover:text-white'}`}>
-          <Shuffle size={16} />
-        </button>
-        <button onClick={prevTrack} className="p-1 text-white hover:scale-110 transition">
-          <SkipBack size={20} fill="white" />
-        </button>
-        <button 
-          onClick={togglePlay}
-          disabled={!currentTrack}
-          className="w-10 h-10 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 transition disabled:opacity-50"
-        >
-          {isPlaying ? <Pause size={20} fill="black" /> : <Play size={20} fill="black" className="ml-0.5" />}
-        </button>
-        <button onClick={nextTrack} className="p-1 text-white hover:scale-110 transition">
-          <SkipForward size={20} fill="white" />
-        </button>
-        <button onClick={cycleRepeat} className={`p-1 ${repeat !== 'off' ? 'text-ios-blue' : 'text-gray-400 hover:text-white'}`}>
-          <RepeatIcon size={16} />
-        </button>
+      {/* Track Info - Fixed height with proper spacing */}
+      <div className="px-5 pb-2 shrink-0" style={{ minHeight: '60px', maxHeight: '60px' }}>
+        <p className="font-bold text-base truncate mb-1 leading-tight" style={{ color: 'white' }}>
+          {currentTrack?.title || 'No track playing'}
+        </p>
+        <p className="text-sm text-gray-400 truncate leading-tight">
+          {currentTrack?.artists.map(a => a.name).join(', ') || 'Unknown artist'}
+        </p>
       </div>
 
-      {/* Progress */}
-      <div className="px-4 pb-2 shrink-0">
-        <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-          <span>{formatTime(currentTimeDisplay)}</span>
-          <span>{formatTime(duration)}</span>
-        </div>
-        <div className="relative h-1 bg-gray-700 rounded-full">
+      {/* Progress Bar - Fixed height */}
+      <div className="px-5 pb-2 shrink-0" style={{ minHeight: '48px', maxHeight: '48px' }}>
+        <div className="relative h-1.5 bg-white/10 rounded-full overflow-hidden backdrop-blur-sm">
           <div 
-            className="absolute h-full bg-white rounded-full" 
-            style={{ width: `${progress * 100}%` }}
+            className="absolute h-full rounded-full transition-all duration-100"
+            style={{ 
+              width: `${progress * 100}%`,
+              background: `linear-gradient(90deg, ${accentColor}, ${accentColorBright})`
+            }}
           />
           <input
             type="range"
@@ -374,20 +472,71 @@ export default function MiniPlayer() {
             max="1"
             step="0.001"
             value={progress}
-            onChange={(e) => seek(parseFloat(e.target.value))}
+            onChange={(e) => handleSeek(parseFloat(e.target.value))}
             className="absolute inset-0 w-full opacity-0 cursor-pointer"
           />
         </div>
+        <div className="flex items-center justify-between text-xs text-gray-400 mt-2">
+          <span className="font-medium">{formatTime(currentTimeDisplay)}</span>
+          <span className="font-medium">{formatTime(duration)}</span>
+        </div>
       </div>
 
-      {/* Track info */}
-      <div className="px-4 pb-3 shrink-0">
-        <p className="font-semibold text-sm truncate">
-          {currentTrack?.title || 'No track'}
-        </p>
-        <p className="text-xs text-gray-400 truncate">
-          {currentTrack?.artists.map(a => a.name).join(', ') || 'Unknown artist'}
-        </p>
+      {/* Main Controls - Fixed height */}
+      <div className="flex items-center justify-center gap-4 pb-3 shrink-0" style={{ minHeight: '76px', maxHeight: '76px' }}>
+        <button 
+          onClick={handlePrevTrack} 
+          className="p-2 text-white/80 hover:text-white hover:scale-110 transition-all active:scale-95 shrink-0"
+        >
+          <SkipBack size={22} fill="currentColor" />
+        </button>
+        <button 
+          onClick={handleTogglePlay}
+          disabled={!currentTrack}
+          className="w-14 h-14 flex items-center justify-center rounded-full bg-white text-black hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shrink-0"
+        >
+          {isPlaying ? <Pause size={24} fill="black" /> : <Play size={24} fill="black" className="ml-1" />}
+        </button>
+        <button 
+          onClick={handleNextTrack} 
+          className="p-2 text-white/80 hover:text-white hover:scale-110 transition-all active:scale-95 shrink-0"
+        >
+          <SkipForward size={22} fill="currentColor" />
+        </button>
+      </div>
+
+      {/* Secondary Controls - Fixed height */}
+      <div className="flex items-center justify-between px-5 pb-4 shrink-0" style={{ minHeight: '52px', maxHeight: '52px' }}>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => handleVolumeChange(volume > 0 ? 0 : 0.8)} 
+            className="p-1.5 text-gray-400 hover:text-white transition-colors shrink-0"
+          >
+            <VolumeIcon size={18} />
+          </button>
+          <button 
+            onClick={handleToggleShuffle} 
+            className={`p-1.5 transition-colors shrink-0 ${shuffle ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+            style={{ color: shuffle ? accentColorBright : undefined }}
+          >
+            <Shuffle size={18} />
+          </button>
+          <button 
+            onClick={handleCycleRepeat} 
+            className={`p-1.5 transition-colors shrink-0 ${repeat !== 'off' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+            style={{ color: repeat !== 'off' ? accentColorBright : undefined }}
+          >
+            <RepeatIcon size={18} />
+          </button>
+        </div>
+        <button 
+          onClick={() => setShowLyrics(!showLyrics)} 
+          className={`p-1.5 transition-colors shrink-0 ${showLyrics ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+          style={{ color: showLyrics ? accentColorBright : undefined }}
+          title="Toggle Lyrics"
+        >
+          <Mic2 size={18} />
+        </button>
       </div>
     </div>
   )

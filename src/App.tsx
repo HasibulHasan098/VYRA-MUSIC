@@ -61,12 +61,67 @@ import FullscreenPlayer from './components/FullscreenPlayer'
 import LyricsPanel from './components/LyricsPanel'
 
 export default function App() {
-  const { currentView, darkMode, searchQuery, showLyrics, toggleLyrics, inAppKeybinds } = useAppStore()
-  const { currentTrack, restorePlayback, savePosition, initAudio, togglePlay, nextTrack, prevTrack, setVolume, volume, toggleLike } = usePlayerStore()
+  const { currentView, darkMode, searchQuery, showLyrics, toggleLyrics, inAppKeybinds, isOffline, offlineDetected, setOffline, cachedSongs } = useAppStore()
+  const { currentTrack, restorePlayback, savePosition, initAudio, togglePlay, nextTrack, prevTrack, setVolume, volume, toggleLike, cleanupOldRecentTracks } = usePlayerStore()
   const [isFullscreen, setIsFullscreen] = useState(false)
+  const [showOfflineNotification, setShowOfflineNotification] = useState(false)
 
   // Check if this is the mini player window
   const isMiniPlayer = window.location.hash === '#miniplayer'
+
+  // Check online status - simple and reliable
+  useEffect(() => {
+    if (isMiniPlayer) return
+
+    // Always start as online
+    setOffline(false)
+
+    // Listen to browser's native online/offline events only
+    const handleOnline = () => {
+      setOffline(false)
+      setShowOfflineNotification(false)
+    }
+    
+    const handleOffline = () => {
+      setOffline(true)
+      setShowOfflineNotification(true)
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => setShowOfflineNotification(false), 5000)
+    }
+
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [isMiniPlayer, setOffline])
+
+  // Show offline notification and switch to home when first detected
+  useEffect(() => {
+    if (offlineDetected && isOffline && !isMiniPlayer) {
+      setShowOfflineNotification(true)
+      setTimeout(() => setShowOfflineNotification(false), 5000)
+      
+      // Auto-switch to home page to show cached songs
+      const { setView, cachedSongs } = useAppStore.getState()
+      if (cachedSongs.length > 0) {
+        setView('home')
+      }
+    }
+  }, [offlineDetected, isOffline, isMiniPlayer])
+
+  // Cleanup old recent tracks periodically (every 5 minutes)
+  useEffect(() => {
+    if (isMiniPlayer) return
+    
+    const interval = setInterval(() => {
+      cleanupOldRecentTracks()
+    }, 5 * 60 * 1000) // 5 minutes
+    
+    return () => clearInterval(interval)
+  }, [isMiniPlayer, cleanupOldRecentTracks])
 
   // Expose fullscreen toggle globally for Player component
   // Uses CSS overlay fullscreen - simpler and more reliable
@@ -348,6 +403,34 @@ export default function App() {
   return (
     <div className={`h-screen flex flex-col ${darkMode ? 'dark bg-ios-bg-dark' : 'bg-ios-bg'}`}>
       <TitleBar />
+      
+      {/* Offline Notification */}
+      {showOfflineNotification && isOffline && (
+        <div className={`fixed top-16 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 rounded-xl shadow-2xl backdrop-blur-md transition-all duration-300 ${
+          darkMode ? 'bg-gray-800/95 border border-gray-700' : 'bg-white/95 border border-gray-200'
+        }`}>
+          <div className="flex items-center gap-3">
+            <div className="w-2 h-2 rounded-full bg-orange-500 animate-pulse" />
+            <div>
+              <p className={`font-semibold text-sm ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                You're offline
+              </p>
+              <p className={`text-xs ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                {cachedSongs.length > 0 
+                  ? `Showing ${cachedSongs.length} cached songs` 
+                  : 'No cached songs available'}
+              </p>
+            </div>
+            <button 
+              onClick={() => setShowOfflineNotification(false)}
+              className={`ml-4 p-1 rounded-lg hover:bg-gray-500/20 transition-colors ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+      
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className={`flex-1 overflow-hidden relative flex flex-col ${darkMode ? 'bg-ios-bg-dark' : 'bg-ios-bg'}`}>

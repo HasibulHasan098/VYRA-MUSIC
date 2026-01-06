@@ -6,7 +6,7 @@ import TrackRow from '../components/TrackRow'
 import Tooltip from '../components/Tooltip'
 import ArtistAvatar from '../components/ArtistAvatar'
 
-type Tab = 'recent' | 'liked' | 'artists' | 'playlists' | 'downloads'
+type LibraryTab = 'recent' | 'liked' | 'artists' | 'playlists' | 'downloads'
 
 export default function LibraryView() {
   const { darkMode, libraryTab, setLibraryTab, downloads, downloadedSongs, removeDownload, removeDownloadedSong, downloadTrack, userPlaylists, createPlaylist, deletePlaylist, openUserPlaylist, followedArtists, unfollowArtist, openArtist } = useAppStore()
@@ -15,7 +15,7 @@ export default function LibraryView() {
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
 
-  const tabs: { id: Tab; label: string; icon: typeof Heart }[] = [
+  const tabs: { id: LibraryTab; label: string; icon: typeof Heart }[] = [
     { id: 'recent', label: 'Recent', icon: Clock },
     { id: 'liked', label: 'Liked', icon: Heart },
     { id: 'artists', label: 'Artists', icon: Users },
