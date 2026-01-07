@@ -1104,6 +1104,73 @@ async fn open_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn fetch_url(state: State<'_, AppState>, url: String) -> Result<String, String> {
+    // Use different headers based on the URL
+    let is_spotify = url.contains("spotify.com");
+    
+    let mut request = state.client.get(&url);
+    
+    if is_spotify {
+        // Spotify-specific headers to look like a real browser
+        request = request
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+            .header("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Encoding", "identity") // Don't request compressed - easier to parse
+            .header("Cache-Control", "no-cache")
+            .header("Pragma", "no-cache")
+            .header("Sec-Ch-Ua", "\"Not A(Brand\";v=\"99\", \"Google Chrome\";v=\"121\", \"Chromium\";v=\"121\"")
+            .header("Sec-Ch-Ua-Mobile", "?0")
+            .header("Sec-Ch-Ua-Platform", "\"Windows\"")
+            .header("Sec-Fetch-Dest", "document")
+            .header("Sec-Fetch-Mode", "navigate")
+            .header("Sec-Fetch-Site", "none")
+            .header("Sec-Fetch-User", "?1")
+            .header("Upgrade-Insecure-Requests", "1");
+    } else {
+        request = request
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+            .header("Accept", "*/*");
+    }
+    
+    let response = request
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {} (url: {})", e, url))?;
+    
+    let status = response.status();
+    if !status.is_success() {
+        return Err(format!("HTTP error: {} for {}", status, url));
+    }
+    
+    response.text().await.map_err(|e| format!("Failed to read response: {}", e))
+}
+
+#[tauri::command]
+async fn fetch_spotify_api(state: State<'_, AppState>, url: String, token: String) -> Result<String, String> {
+    let response = state
+        .client
+        .get(&url)
+        .header("Authorization", format!("Bearer {}", token))
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .header("Accept", "application/json")
+        .header("Accept-Language", "en-US,en;q=0.9")
+        .header("Origin", "https://open.spotify.com")
+        .header("Referer", "https://open.spotify.com/")
+        .timeout(std::time::Duration::from_secs(30))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+    
+    response.text().await.map_err(|e| format!("Failed to read response: {}", e))
+}
+
+#[tauri::command]
 fn update_media_metadata(
     title: String,
     artist: String,
@@ -1626,6 +1693,8 @@ async fn handle_audio_proxy_with_cache(
 
 fn main() {
     let client = Client::builder()
+        .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(30))
         .build()
         .expect("Failed to create HTTP client");
 
@@ -1758,6 +1827,8 @@ fn main() {
             get_cached_audio,
             clear_audio_cache,
             open_url,
+            fetch_url,
+            fetch_spotify_api,
             update_media_metadata,
             update_media_playback,
             update_discord_presence,

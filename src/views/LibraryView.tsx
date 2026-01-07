@@ -1,19 +1,153 @@
 import { useState } from 'react'
-import { Plus, Heart, Clock, Download, Music, CheckCircle, Loader2, Trash2, RotateCcw, X, Play, Users } from 'lucide-react'
+import { Plus, Heart, Clock, Download, Music, CheckCircle, Loader2, Trash2, RotateCcw, X, Play, Users, MoreHorizontal, Pencil } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore, Song } from '../store/playerStore'
 import TrackRow from '../components/TrackRow'
 import Tooltip from '../components/Tooltip'
 import ArtistAvatar from '../components/ArtistAvatar'
+import { fetchSpotifyData, matchSpotifyTrack } from '../api/spotify'
+import { youtube } from '../api/youtube'
 
 type LibraryTab = 'recent' | 'liked' | 'artists' | 'playlists' | 'downloads'
 
 export default function LibraryView() {
-  const { darkMode, libraryTab, setLibraryTab, downloads, downloadedSongs, removeDownload, removeDownloadedSong, downloadTrack, userPlaylists, createPlaylist, deletePlaylist, openUserPlaylist, followedArtists, unfollowArtist, openArtist } = useAppStore()
+  const { darkMode, libraryTab, setLibraryTab, downloads, downloadedSongs, removeDownload, removeDownloadedSong, downloadTrack, userPlaylists, createPlaylist, deletePlaylist, renamePlaylist, openUserPlaylist, followedArtists, unfollowArtist, openArtist, addToPlaylist } = useAppStore()
   const { recentlyPlayed, likedSongs, setQueue } = usePlayerStore()
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newPlaylistName, setNewPlaylistName] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null)
+  
+  // Spotify import state
+  const [showSpotifyImport, setShowSpotifyImport] = useState(false)
+  const [spotifyUrl, setSpotifyUrl] = useState('')
+  const [spotifyImporting, setSpotifyImporting] = useState(false)
+  const [spotifyProgress, setSpotifyProgress] = useState({ stage: '', current: 0, total: 0 })
+  const [spotifyError, setSpotifyError] = useState<string | null>(null)
+  
+  // YouTube Music import state
+  const [showYTImport, setShowYTImport] = useState(false)
+  const [ytUrl, setYtUrl] = useState('')
+  const [ytImporting, setYtImporting] = useState(false)
+  const [ytProgress, setYtProgress] = useState({ stage: '', current: 0, total: 0 })
+  const [ytError, setYtError] = useState<string | null>(null)
+  
+  // Playlist context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; playlistId: string; playlistName: string } | null>(null)
+  const [renameModal, setRenameModal] = useState<{ id: string; name: string } | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
+  // Handle Spotify import
+  const handleSpotifyImport = async () => {
+    if (!spotifyUrl.trim()) return
+    
+    setSpotifyImporting(true)
+    setSpotifyError(null)
+    setSpotifyProgress({ stage: 'Connecting...', current: 0, total: 100 })
+    
+    try {
+      const data = await fetchSpotifyData(spotifyUrl, (stage, progress) => {
+        setSpotifyProgress({ stage, current: progress, total: 100 })
+      })
+      
+      setSpotifyProgress({ stage: 'Matching songs...', current: 0, total: data.tracks.length })
+      
+      // Create playlist
+      const playlistName = `${data.name} (Spotify)`
+      const playlistId = createPlaylist(playlistName)
+      
+      // Match and add tracks
+      const searchFn = async (query: string) => {
+        const results = await youtube.searchAll(query)
+        return results.songs
+      }
+      
+      for (let i = 0; i < data.tracks.length; i++) {
+        const track = data.tracks[i]
+        setSpotifyProgress({ 
+          stage: `Matching: ${track.name.substring(0, 25)}${track.name.length > 25 ? '...' : ''}`, 
+          current: i + 1, 
+          total: data.tracks.length 
+        })
+        
+        const matched = await matchSpotifyTrack(track, searchFn)
+        if (matched) {
+          addToPlaylist(playlistId, matched)
+        }
+        
+        if (i < data.tracks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 150))
+        }
+      }
+      
+      // Done
+      setShowSpotifyImport(false)
+      setSpotifyUrl('')
+      setSpotifyImporting(false)
+    } catch (error) {
+      setSpotifyError(error instanceof Error ? error.message : 'Import failed')
+      setSpotifyImporting(false)
+    }
+  }
+
+  // Handle YouTube Music import
+  const handleYTImport = async () => {
+    if (!ytUrl.trim()) return
+    
+    setYtImporting(true)
+    setYtError(null)
+    setYtProgress({ stage: 'Fetching playlist...', current: 0, total: 100 })
+    
+    try {
+      // Extract playlist ID from URL
+      const playlistIdMatch = ytUrl.match(/[?&]list=([^&]+)/) || ytUrl.match(/playlist\/([^?&]+)/)
+      if (!playlistIdMatch) {
+        throw new Error('Invalid YouTube Music URL. Please use a playlist link.')
+      }
+      
+      const playlistId = playlistIdMatch[1]
+      setYtProgress({ stage: 'Loading playlist...', current: 30, total: 100 })
+      
+      const playlist = await youtube.getPlaylist(playlistId)
+      if (!playlist || playlist.songs.length === 0) {
+        throw new Error('Playlist not found or empty')
+      }
+      
+      setYtProgress({ stage: 'Creating playlist...', current: 50, total: 100 })
+      
+      // Create local playlist
+      const newPlaylistName = `${playlist.title} (YT Music)`
+      const newPlaylistId = createPlaylist(newPlaylistName)
+      
+      // Add songs
+      for (let i = 0; i < playlist.songs.length; i++) {
+        const song = playlist.songs[i]
+        setYtProgress({ 
+          stage: `Adding: ${song.title.substring(0, 25)}${song.title.length > 25 ? '...' : ''}`, 
+          current: i + 1, 
+          total: playlist.songs.length 
+        })
+        addToPlaylist(newPlaylistId, song)
+      }
+      
+      // Done
+      setShowYTImport(false)
+      setYtUrl('')
+      setYtImporting(false)
+    } catch (error) {
+      setYtError(error instanceof Error ? error.message : 'Import failed')
+      setYtImporting(false)
+    }
+  }
+
+  // Handle playlist context menu
+  const handlePlaylistContextMenu = (e: React.MouseEvent, playlistId: string, playlistName: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setContextMenu({ x: e.clientX, y: e.clientY, playlistId, playlistName })
+  }
+
+  // Close context menu on click outside
+  const closeContextMenu = () => setContextMenu(null)
 
   const tabs: { id: LibraryTab; label: string; icon: typeof Heart }[] = [
     { id: 'recent', label: 'Recent', icon: Clock },
@@ -188,23 +322,52 @@ export default function LibraryView() {
 
       {libraryTab === 'playlists' && (
         <div className="space-y-fib-13">
-          {/* Create playlist button */}
-          <button 
-            onClick={() => setShowCreateModal(true)}
-            className={`w-full flex items-center gap-fib-13 p-fib-13 rounded-fib-13 border-2 border-dashed ios-active ios-transition
-              ${darkMode ? 'border-ios-gray hover:border-ios-blue' : 'border-ios-gray-3 hover:border-ios-blue'}`}
-          >
-            <div className={`w-fib-55 h-fib-55 rounded-fib-8 flex items-center justify-center
-              ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
-              <Plus size={21} className="text-ios-gray" />
+          {/* Create playlist and Import buttons */}
+          <div className="flex gap-fib-8 flex-wrap">
+            <button 
+              onClick={() => setShowCreateModal(true)}
+              className={`flex-1 min-w-[200px] flex items-center gap-fib-13 p-fib-13 rounded-fib-13 border-2 border-dashed ios-active ios-transition
+                ${darkMode ? 'border-ios-gray hover:border-ios-blue' : 'border-ios-gray-3 hover:border-ios-blue'}`}
+            >
+              <div className={`w-fib-34 h-fib-34 rounded-fib-8 flex items-center justify-center
+                ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                <Plus size={18} className="text-ios-gray" />
+              </div>
+              <div className="text-left">
+                <p className={`text-fib-13 font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
+                  Create Playlist
+                </p>
+              </div>
+            </button>
+            
+            <div className="flex gap-fib-5">
+              <button 
+                onClick={() => {
+                  setSpotifyUrl('')
+                  setSpotifyError(null)
+                  setShowSpotifyImport(true)
+                }}
+                className="flex items-center gap-fib-5 px-fib-13 py-fib-8 rounded-fib-13 bg-[#1DB954] text-white ios-active ios-transition"
+              >
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
+                  <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                </svg>
+              </button>
+              
+              <button 
+                onClick={() => {
+                  setYtUrl('')
+                  setYtError(null)
+                  setShowYTImport(true)
+                }}
+                className="flex items-center gap-fib-5 px-fib-13 py-fib-8 rounded-fib-13 bg-[#FF0000] text-white ios-active ios-transition"
+              >
+                <svg viewBox="0 0 24 24" className="w-5 h-5 fill-current">
+                  <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                </svg>
+              </button>
             </div>
-            <div className="text-left">
-              <p className={`text-fib-13 font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
-                Create Playlist
-              </p>
-              <p className="text-fib-13 text-ios-gray">Add your favorite songs</p>
-            </div>
-          </button>
+          </div>
 
           {/* User playlists */}
           {userPlaylists.length > 0 ? (
@@ -213,6 +376,7 @@ export default function LibraryView() {
                 <div 
                   key={playlist.id}
                   onClick={() => openUserPlaylist(playlist.id)}
+                  onContextMenu={(e) => handlePlaylistContextMenu(e, playlist.id, playlist.name)}
                   className={`flex items-center gap-fib-13 p-fib-13 rounded-fib-13 cursor-pointer ios-active ios-transition
                     ${darkMode ? 'bg-ios-card-dark hover:bg-ios-card-secondary-dark' : 'bg-ios-card hover:bg-ios-card-secondary'}`}
                 >
@@ -251,16 +415,16 @@ export default function LibraryView() {
                     </Tooltip>
                   )}
                   
-                  {/* Delete button */}
-                  <Tooltip text="Delete playlist">
+                  {/* More options button */}
+                  <Tooltip text="More options">
                     <button 
                       onClick={(e) => {
                         e.stopPropagation()
-                        setDeleteConfirm({ id: playlist.id, name: playlist.name })
+                        handlePlaylistContextMenu(e, playlist.id, playlist.name)
                       }}
                       className={`p-fib-5 rounded-fib-8 ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
                     >
-                      <Trash2 size={16} className="text-ios-red" />
+                      <MoreHorizontal size={16} className="text-ios-gray" />
                     </button>
                   </Tooltip>
                 </div>
@@ -270,7 +434,7 @@ export default function LibraryView() {
             <EmptyState 
               icon={Music}
               title="No playlists yet"
-              description="Create a playlist to organize your music"
+              description="Create a playlist or import from Spotify"
               darkMode={darkMode}
             />
           )}
@@ -376,6 +540,285 @@ export default function LibraryView() {
                 className="flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium bg-ios-red text-white ios-active"
               >
                 Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Spotify Import Modal */}
+      {showSpotifyImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !spotifyImporting && setShowSpotifyImport(false)}>
+          <div 
+            className={`w-full max-w-sm mx-4 rounded-fib-21 p-fib-21 shadow-ios-lg
+              ${darkMode ? 'bg-ios-card-dark' : 'bg-ios-card'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-fib-13">
+              <div className="flex items-center gap-fib-8">
+                <div className="w-8 h-8 rounded-full bg-[#1DB954] flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
+                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                  </svg>
+                </div>
+                <h2 className={`text-fib-21 font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                  Import from Spotify
+                </h2>
+              </div>
+              {!spotifyImporting && (
+                <button onClick={() => setShowSpotifyImport(false)} className="p-fib-5 ios-active">
+                  <X size={21} className="text-ios-gray" />
+                </button>
+              )}
+            </div>
+            
+            {!spotifyImporting ? (
+              <>
+                <input
+                  type="text"
+                  placeholder="Paste Spotify playlist URL..."
+                  value={spotifyUrl}
+                  onChange={(e) => setSpotifyUrl(e.target.value)}
+                  autoFocus
+                  className={`w-full px-fib-13 py-fib-13 rounded-fib-13 text-fib-13 outline-none mb-fib-8
+                    ${darkMode 
+                      ? 'bg-ios-card-secondary-dark text-white placeholder-ios-gray' 
+                      : 'bg-ios-card-secondary text-black placeholder-ios-gray'}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && spotifyUrl.trim()) {
+                      handleSpotifyImport()
+                    }
+                  }}
+                />
+                
+                {spotifyError && (
+                  <p className="text-fib-13 text-ios-red mb-fib-8">{spotifyError}</p>
+                )}
+                
+                <p className="text-fib-8 text-ios-gray mb-fib-13">
+                  Supports public playlists and albums
+                </p>
+                
+                <div className="flex gap-fib-8">
+                  <button 
+                    onClick={() => setShowSpotifyImport(false)}
+                    className={`flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleSpotifyImport}
+                    disabled={!spotifyUrl.trim()}
+                    className="flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium bg-[#1DB954] text-white ios-active disabled:opacity-50"
+                  >
+                    Import
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="py-fib-13">
+                <p className={`text-fib-13 font-medium mb-fib-8 ${darkMode ? 'text-white' : 'text-black'}`}>
+                  {spotifyProgress.stage}
+                </p>
+                <div className="w-full h-2 rounded-full bg-ios-gray/20 overflow-hidden mb-fib-8">
+                  <div 
+                    className="h-full bg-[#1DB954] transition-all duration-300"
+                    style={{ width: `${(spotifyProgress.current / spotifyProgress.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-fib-8 text-ios-gray text-center">
+                  {spotifyProgress.current} / {spotifyProgress.total}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* YouTube Music Import Modal */}
+      {showYTImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => !ytImporting && setShowYTImport(false)}>
+          <div 
+            className={`w-full max-w-sm mx-4 rounded-fib-21 p-fib-21 shadow-ios-lg
+              ${darkMode ? 'bg-ios-card-dark' : 'bg-ios-card'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-fib-13">
+              <div className="flex items-center gap-fib-8">
+                <div className="w-8 h-8 rounded-full bg-[#FF0000] flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" className="w-4 h-4 fill-white">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                  </svg>
+                </div>
+                <h2 className={`text-fib-21 font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                  Import from YT Music
+                </h2>
+              </div>
+              {!ytImporting && (
+                <button onClick={() => setShowYTImport(false)} className="p-fib-5 ios-active">
+                  <X size={21} className="text-ios-gray" />
+                </button>
+              )}
+            </div>
+            
+            {!ytImporting ? (
+              <>
+                <input
+                  type="text"
+                  placeholder="Paste YouTube Music playlist URL..."
+                  value={ytUrl}
+                  onChange={(e) => setYtUrl(e.target.value)}
+                  autoFocus
+                  className={`w-full px-fib-13 py-fib-13 rounded-fib-13 text-fib-13 outline-none mb-fib-8
+                    ${darkMode 
+                      ? 'bg-ios-card-secondary-dark text-white placeholder-ios-gray' 
+                      : 'bg-ios-card-secondary text-black placeholder-ios-gray'}`}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && ytUrl.trim()) {
+                      handleYTImport()
+                    }
+                  }}
+                />
+                
+                {ytError && (
+                  <p className="text-fib-13 text-ios-red mb-fib-8">{ytError}</p>
+                )}
+                
+                <p className="text-fib-8 text-ios-gray mb-fib-13">
+                  Supports public YouTube Music playlists
+                </p>
+                
+                <div className="flex gap-fib-8">
+                  <button 
+                    onClick={() => setShowYTImport(false)}
+                    className={`flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleYTImport}
+                    disabled={!ytUrl.trim()}
+                    className="flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium bg-[#FF0000] text-white ios-active disabled:opacity-50"
+                  >
+                    Import
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="py-fib-13">
+                <p className={`text-fib-13 font-medium mb-fib-8 ${darkMode ? 'text-white' : 'text-black'}`}>
+                  {ytProgress.stage}
+                </p>
+                <div className="w-full h-2 rounded-full bg-ios-gray/20 overflow-hidden mb-fib-8">
+                  <div 
+                    className="h-full bg-[#FF0000] transition-all duration-300"
+                    style={{ width: `${(ytProgress.current / ytProgress.total) * 100}%` }}
+                  />
+                </div>
+                <p className="text-fib-8 text-ios-gray text-center">
+                  {ytProgress.current} / {ytProgress.total}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Playlist Context Menu */}
+      {contextMenu && (
+        <div className="fixed inset-0 z-50" onClick={closeContextMenu}>
+          <div 
+            className={`absolute rounded-fib-13 shadow-ios-lg overflow-hidden min-w-[160px]
+              ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}
+            style={{ 
+              left: Math.min(contextMenu.x, window.innerWidth - 180), 
+              top: Math.min(contextMenu.y, window.innerHeight - 120) 
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={() => {
+                setRenameValue(contextMenu.playlistName)
+                setRenameModal({ id: contextMenu.playlistId, name: contextMenu.playlistName })
+                closeContextMenu()
+              }}
+              className={`w-full flex items-center gap-fib-8 px-fib-13 py-fib-13 text-left ios-active
+                ${darkMode ? 'hover:bg-white/10 text-white' : 'hover:bg-black/5 text-black'}`}
+            >
+              <Pencil size={16} className="text-ios-gray" />
+              <span className="text-fib-13">Rename</span>
+            </button>
+            <button
+              onClick={() => {
+                setDeleteConfirm({ id: contextMenu.playlistId, name: contextMenu.playlistName })
+                closeContextMenu()
+              }}
+              className={`w-full flex items-center gap-fib-8 px-fib-13 py-fib-13 text-left ios-active
+                ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+            >
+              <Trash2 size={16} className="text-ios-red" />
+              <span className="text-fib-13 text-ios-red">Delete</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Playlist Modal */}
+      {renameModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRenameModal(null)}>
+          <div 
+            className={`w-full max-w-sm mx-4 rounded-fib-21 p-fib-21 shadow-ios-lg
+              ${darkMode ? 'bg-ios-card-dark' : 'bg-ios-card'}`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-fib-13">
+              <h2 className={`text-fib-21 font-bold ${darkMode ? 'text-white' : 'text-black'}`}>
+                Rename Playlist
+              </h2>
+              <button onClick={() => setRenameModal(null)} className="p-fib-5 ios-active">
+                <X size={21} className="text-ios-gray" />
+              </button>
+            </div>
+            
+            <input
+              type="text"
+              placeholder="Playlist name"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              autoFocus
+              className={`w-full px-fib-13 py-fib-13 rounded-fib-13 text-fib-13 outline-none mb-fib-21
+                ${darkMode 
+                  ? 'bg-ios-card-secondary-dark text-white placeholder-ios-gray' 
+                  : 'bg-ios-card-secondary text-black placeholder-ios-gray'}`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && renameValue.trim()) {
+                  renamePlaylist(renameModal.id, renameValue.trim())
+                  setRenameModal(null)
+                }
+              }}
+            />
+            
+            <div className="flex gap-fib-8">
+              <button 
+                onClick={() => setRenameModal(null)}
+                className={`flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium ios-active
+                  ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={() => {
+                  if (renameValue.trim()) {
+                    renamePlaylist(renameModal.id, renameValue.trim())
+                    setRenameModal(null)
+                  }
+                }}
+                disabled={!renameValue.trim()}
+                className="flex-1 py-fib-13 rounded-fib-13 text-fib-13 font-medium bg-ios-blue text-white ios-active disabled:opacity-50"
+              >
+                Rename
               </button>
             </div>
           </div>

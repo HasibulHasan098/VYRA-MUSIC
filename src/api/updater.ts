@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 const GITHUB_REPO = 'HasibulHasan098/VYRA-MUSIC'
-const CURRENT_VERSION = '1.0.9'
+const CURRENT_VERSION = '1.1.0'
 
 export interface ReleaseInfo {
   version: string

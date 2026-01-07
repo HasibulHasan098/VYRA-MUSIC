@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://vyra.fasthand.study/">
-    <img src="https://img.shields.io/badge/Download-v1.0.9-blue?style=flat-square" alt="Download">
+    <img src="https://img.shields.io/badge/Download-v1.1.0-blue?style=flat-square" alt="Download">
   </a>
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
@@ -42,14 +42,34 @@
 - 📴 **Offline Cache** — Cache songs for offline playback
 - 🔔 **Auto-Updates** — Check for updates and install with one click
 - 🎮 **Discord RPC** — Show what you're listening to on Discord
+- 🎧 **Spotify Import** — Import playlists and albums from Spotify
+- 📺 **YouTube Music Import** — Import playlists from YouTube Music
 
-## 🆕 What's New in v1.0.9
+## 🆕 What's New in v1.1.0
 
-### New Features
-- ✨ **Offline Mode** — Automatically detects when you're offline and shows cached songs
-- 🎵 **Smart Queue Management** — Prevents duplicate songs in queue within 30 minutes
-- 🎨 **Improved Mini Player** — Better UI with perfect album art display and responsive layout
-- 🔧 **Bug Fixes** — Various stability improvements and fixes
+### 🎉 Big Update!
+
+#### Playlist Import Features
+- 🎧 **Spotify Import** — Import playlists and albums from Spotify URLs
+  - Paste any public Spotify playlist or album URL
+  - Preview tracks before importing with song thumbnails
+  - Automatic matching to YouTube Music catalog
+  - Progress bar showing import status
+- 📺 **YouTube Music Import** — Import playlists from YouTube Music URLs
+  - Paste any public YouTube Music playlist URL
+  - Preview all tracks before creating playlist
+  - One-click import to your library
+
+#### Playlist Management
+- ✏️ **Rename Playlists** — Right-click any playlist to rename it
+- 🗑️ **Delete Playlists** — Right-click to delete playlists with confirmation
+- 📋 **Context Menu** — New right-click menu for playlist options
+- ⚙️ **Playlist Options** — Three-dot menu in playlist view for quick actions
+
+#### UI Improvements
+- 🎨 **Import Buttons** — Quick access import buttons in Library (Spotify & YouTube icons)
+- 📊 **Import Preview** — See playlist info and track list before importing
+- 🔄 **Progress Tracking** — Real-time progress bars during import
 
 
 ## 🚀 Installation
@@ -57,7 +77,7 @@
 ### Windows
 
 1. Download the latest installer from [vyra.fasthand.study](https://vyra.fasthand.study/)
-2. Run `VYRA_1.0.9_x64-setup.exe`
+2. Run `VYRA_1.1.0_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source
@@ -148,6 +168,8 @@ Settings are available in the app (click the gear icon):
 ### Data Management
 - **Export Data** — Backup your liked songs, playlists, and settings to a `.vyra` file
 - **Import Data** — Restore your data from a backup file
+- **Import from Spotify** — Import playlists and albums from Spotify URLs
+- **Import from YouTube Music** — Import playlists from YouTube Music URLs
 - **Clear Data** — Clear history, liked songs, downloads, playlists, or followed artists
 
 ## 🎤 Lyrics
@@ -286,10 +308,12 @@ VYRA is an independent, open-source project and is not affiliated with, endorsed
 ## 💡 Tips & Tricks
 
 - **Quick Search** — Start typing anywhere to search
-- **Right-Click Menu** — Right-click on any song for more options
+- **Right-Click Menu** — Right-click on any song or playlist for more options
 - **Mini Player** — Click the picture-in-picture icon for a compact player window
 - **Fullscreen Mode** — Click the fullscreen icon for an immersive experience
 - **Offline Mode** — Cached songs automatically appear when you're offline
+- **Import Playlists** — Use the Spotify/YouTube icons in Library to import playlists
+- **Rename Playlists** — Right-click any playlist to rename or delete it
 
 
 ## 👨‍💻 Author

@@ -19,10 +19,14 @@ import {
   Repeat,
   SlidersHorizontal,
   Keyboard,
+  Music,
+  AlertCircle,
 } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore } from '../store/playerStore'
 import { isUpdateAvailable, getCurrentVersion, downloadAndInstallUpdate, openReleasesPage, ReleaseInfo } from '../api/updater'
+import { fetchSpotifyData, matchSpotifyTrack, SpotifyImportResult } from '../api/spotify'
+import { youtube, Song } from '../api/youtube'
 
 // Extend Window interface for Tauri
 declare global {
@@ -76,6 +80,8 @@ export default function SettingsView() {
     followedArtists,
     userPlaylists,
     downloadedSongs,
+    createPlaylist,
+    addToPlaylist,
   } = useAppStore()
   const { likedSongs, recentlyPlayed } = usePlayerStore()
   const [showQualityDropdown, setShowQualityDropdown] = useState(false)
@@ -118,6 +124,23 @@ export default function SettingsView() {
   const [importMode, setImportMode] = useState<'merge' | 'fresh'>('merge')
   const [importedData, setImportedData] = useState<any>(null)
   const [importFileName, setImportFileName] = useState<string>('')
+
+  // Spotify import state
+  const [showSpotifyImportModal, setShowSpotifyImportModal] = useState(false)
+  const [spotifyUrl, setSpotifyUrl] = useState('')
+  const [spotifyImportStatus, setSpotifyImportStatus] = useState<'idle' | 'fetching' | 'matching' | 'done' | 'error'>('idle')
+  const [spotifyData, setSpotifyData] = useState<SpotifyImportResult | null>(null)
+  const [spotifyMatchedSongs, setSpotifyMatchedSongs] = useState<Song[]>([])
+  const [spotifyMatchProgress, setSpotifyMatchProgress] = useState({ current: 0, total: 0, stage: '' })
+  const [spotifyError, setSpotifyError] = useState<string | null>(null)
+
+  // YouTube Music import state
+  const [showYTImportModal, setShowYTImportModal] = useState(false)
+  const [ytUrl, setYtUrl] = useState('')
+  const [ytImportStatus, setYtImportStatus] = useState<'idle' | 'fetching' | 'done' | 'creating' | 'created' | 'error'>('idle')
+  const [ytProgress, setYtProgress] = useState({ current: 0, total: 0, stage: '' })
+  const [ytError, setYtError] = useState<string | null>(null)
+  const [ytPlaylistData, setYtPlaylistData] = useState<{ title: string; thumbnail: string; songs: Song[] } | null>(null)
 
   // Check for updates on mount
   useEffect(() => {
@@ -530,6 +553,157 @@ export default function SettingsView() {
     setImportMode('merge')
   }
 
+  // Spotify import handler
+  const handleSpotifyImport = async () => {
+    if (!spotifyUrl.trim()) return
+
+    setSpotifyImportStatus('fetching')
+    setSpotifyError(null)
+    setSpotifyData(null)
+    setSpotifyMatchedSongs([])
+    setSpotifyMatchProgress({ current: 0, total: 100, stage: 'Connecting to Spotify...' })
+
+    try {
+      // Fetch Spotify playlist/album data with progress callback
+      const data = await fetchSpotifyData(spotifyUrl, (stage, progress) => {
+        setSpotifyMatchProgress({ current: progress, total: 100, stage })
+      })
+      
+      setSpotifyData(data)
+      setSpotifyImportStatus('matching')
+      setSpotifyMatchProgress({ current: 0, total: data.tracks.length, stage: 'Matching songs...' })
+
+      // Match each track on YouTube Music
+      const matchedSongs: Song[] = []
+      const searchFn = async (query: string): Promise<Song[]> => {
+        const results = await youtube.searchAll(query)
+        return results.songs
+      }
+
+      for (let i = 0; i < data.tracks.length; i++) {
+        const track = data.tracks[i]
+        setSpotifyMatchProgress({ 
+          current: i + 1, 
+          total: data.tracks.length, 
+          stage: `Matching: ${track.name.substring(0, 30)}${track.name.length > 30 ? '...' : ''}`
+        })
+        
+        const matched = await matchSpotifyTrack(track, searchFn)
+        if (matched) {
+          matchedSongs.push(matched)
+        }
+        
+        // Small delay to avoid rate limiting
+        if (i < data.tracks.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 150))
+        }
+      }
+
+      setSpotifyMatchedSongs(matchedSongs)
+      setSpotifyImportStatus('done')
+    } catch (error) {
+      setSpotifyError(error instanceof Error ? error.message : 'Failed to import from Spotify')
+      setSpotifyImportStatus('error')
+    }
+  }
+
+  // Create playlist from matched Spotify songs
+  const handleCreateSpotifyPlaylist = () => {
+    if (!spotifyData || spotifyMatchedSongs.length === 0) return
+
+    const { createPlaylist, addToPlaylist } = useAppStore.getState()
+    const playlistName = `${spotifyData.name} (Spotify Import)`
+    const playlistId = createPlaylist(playlistName)
+
+    for (const song of spotifyMatchedSongs) {
+      addToPlaylist(playlistId, song)
+    }
+
+    // Reset and close
+    setShowSpotifyImportModal(false)
+    setSpotifyUrl('')
+    setSpotifyData(null)
+    setSpotifyMatchedSongs([])
+    setSpotifyImportStatus('idle')
+    setSpotifyError(null)
+  }
+
+  // Reset Spotify import modal
+  const resetSpotifyImport = () => {
+    setSpotifyUrl('')
+    setSpotifyData(null)
+    setSpotifyMatchedSongs([])
+    setSpotifyImportStatus('idle')
+    setSpotifyError(null)
+    setSpotifyMatchProgress({ current: 0, total: 0, stage: '' })
+  }
+
+  // Reset YouTube Music import modal
+  const resetYTImport = () => {
+    setYtUrl('')
+    setYtImportStatus('idle')
+    setYtError(null)
+    setYtProgress({ current: 0, total: 0, stage: '' })
+    setYtPlaylistData(null)
+  }
+
+  // Handle YouTube Music import - fetch playlist
+  const handleYTImport = async () => {
+    if (!ytUrl.trim()) return
+    
+    setYtImportStatus('fetching')
+    setYtError(null)
+    setYtProgress({ stage: 'Fetching playlist...', current: 30, total: 100 })
+    
+    try {
+      // Extract playlist ID from URL
+      const playlistIdMatch = ytUrl.match(/[?&]list=([^&]+)/) || ytUrl.match(/playlist\/([^?&]+)/)
+      if (!playlistIdMatch) {
+        throw new Error('Invalid YouTube Music URL. Please use a playlist link.')
+      }
+      
+      const playlistId = playlistIdMatch[1]
+      setYtProgress({ stage: 'Loading playlist...', current: 60, total: 100 })
+      
+      const playlist = await youtube.getPlaylist(playlistId)
+      if (!playlist || playlist.songs.length === 0) {
+        throw new Error('Playlist not found or empty')
+      }
+      
+      setYtPlaylistData({
+        title: playlist.title,
+        thumbnail: playlist.thumbnail || '',
+        songs: playlist.songs
+      })
+      setYtImportStatus('done')
+    } catch (error) {
+      setYtError(error instanceof Error ? error.message : 'Import failed')
+      setYtImportStatus('error')
+    }
+  }
+
+  // Create playlist from YT Music data
+  const createYTPlaylist = async () => {
+    if (!ytPlaylistData) return
+    
+    setYtImportStatus('creating')
+    
+    const newPlaylistName = `${ytPlaylistData.title} (YT Music)`
+    const newPlaylistId = createPlaylist(newPlaylistName)
+    
+    for (let i = 0; i < ytPlaylistData.songs.length; i++) {
+      const song = ytPlaylistData.songs[i]
+      setYtProgress({ 
+        stage: `Adding: ${song.title.substring(0, 30)}${song.title.length > 30 ? '...' : ''}`, 
+        current: i + 1, 
+        total: ytPlaylistData.songs.length 
+      })
+      addToPlaylist(newPlaylistId, song)
+    }
+    
+    setYtImportStatus('created')
+  }
+
   const settingGroups = [
     {
       title: 'Appearance',
@@ -832,6 +1006,38 @@ export default function SettingsView() {
                 className="hidden"
               />
             </label>
+          )
+        },
+        {
+          icon: Music,
+          label: 'Import from Spotify',
+          description: 'Import playlists or albums from Spotify URL',
+          action: (
+            <button 
+              onClick={() => {
+                resetSpotifyImport()
+                setShowSpotifyImportModal(true)
+              }}
+              className="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium ios-active"
+            >
+              Import
+            </button>
+          )
+        },
+        {
+          icon: Music,
+          label: 'Import from YouTube Music',
+          description: 'Import playlists from YouTube Music URL',
+          action: (
+            <button 
+              onClick={() => {
+                resetYTImport()
+                setShowYTImportModal(true)
+              }}
+              className="px-3 py-1.5 bg-ios-blue text-white rounded-lg text-sm font-medium ios-active"
+            >
+              Import
+            </button>
           )
         },
         {
@@ -1800,6 +2006,553 @@ export default function SettingsView() {
                 <Upload size={16} />
                 Import
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Spotify Import Modal */}
+      {showSpotifyImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#1DB954] flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+                    <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Import from Spotify
+                  </h2>
+                  <p className="text-xs text-ios-gray">Paste a playlist or album URL</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSpotifyImportModal(false)
+                  resetSpotifyImport()
+                }}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className={darkMode ? 'text-white' : 'text-black'} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="px-5 py-4">
+              {spotifyImportStatus === 'idle' && (
+                <>
+                  <input
+                    type="text"
+                    value={spotifyUrl}
+                    onChange={(e) => setSpotifyUrl(e.target.value)}
+                    placeholder="https://open.spotify.com/playlist/..."
+                    className={`w-full px-4 py-3 rounded-xl text-sm
+                      ${darkMode 
+                        ? 'bg-ios-card-secondary-dark text-white placeholder-ios-gray' 
+                        : 'bg-ios-card-secondary text-black placeholder-ios-gray'}
+                      focus:outline-none focus:ring-2 focus:ring-[#1DB954]`}
+                  />
+                  <p className="text-xs text-ios-gray mt-2">
+                    Supports public playlists, albums, and single tracks
+                  </p>
+                </>
+              )}
+
+              {spotifyImportStatus === 'fetching' && (
+                <div className="flex flex-col items-center py-6">
+                  <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-white' : 'text-black'}`}>
+                    {spotifyMatchProgress.stage || 'Fetching Spotify data...'}
+                  </p>
+                  <div className="w-full h-2 rounded-full bg-ios-gray/20 overflow-hidden">
+                    <div 
+                      className="h-full bg-[#1DB954] transition-all duration-500 ease-out"
+                      style={{ width: `${spotifyMatchProgress.current}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-ios-gray mt-2">
+                    Please wait...
+                  </p>
+                </div>
+              )}
+
+              {spotifyImportStatus === 'matching' && (
+                <div className="flex flex-col items-center py-6">
+                  <p className={`text-sm font-medium mb-1 ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Matching songs on YouTube Music
+                  </p>
+                  <p className="text-xs text-ios-gray mb-3 text-center truncate max-w-full px-2">
+                    {spotifyMatchProgress.stage}
+                  </p>
+                  <div className="w-full h-2 rounded-full bg-ios-gray/20 overflow-hidden">
+                    <div 
+                      className="h-full bg-[#1DB954] transition-all duration-300"
+                      style={{ width: `${(spotifyMatchProgress.current / spotifyMatchProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-ios-gray mt-2">
+                    {spotifyMatchProgress.current} / {spotifyMatchProgress.total} tracks
+                  </p>
+                </div>
+              )}
+
+              {spotifyImportStatus === 'done' && spotifyData && (
+                <div className="space-y-4">
+                  {/* Playlist info */}
+                  <div className="flex items-center gap-3">
+                    {spotifyData.thumbnail && (
+                      <img 
+                        src={spotifyData.thumbnail} 
+                        alt={spotifyData.name}
+                        className="w-16 h-16 rounded-lg object-cover"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                        {spotifyData.name}
+                      </p>
+                      <p className="text-xs text-ios-gray">
+                        {spotifyData.tracks.length} tracks from Spotify
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Match results */}
+                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-ios-gray">Matched</span>
+                      <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
+                        {spotifyMatchedSongs.length} / {spotifyData.tracks.length}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-ios-gray/20 overflow-hidden">
+                      <div 
+                        className="h-full bg-[#1DB954]"
+                        style={{ width: `${(spotifyMatchedSongs.length / spotifyData.tracks.length) * 100}%` }}
+                      />
+                    </div>
+                    {spotifyMatchedSongs.length < spotifyData.tracks.length && (
+                      <p className="text-xs text-ios-gray mt-2">
+                        {spotifyData.tracks.length - spotifyMatchedSongs.length} tracks couldn't be found on YouTube Music
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Preview matched songs */}
+                  {spotifyMatchedSongs.length > 0 && (
+                    <div className="max-h-[200px] overflow-y-auto space-y-2">
+                      {spotifyMatchedSongs.slice(0, 5).map((song, i) => (
+                        <div key={song.id} className="flex items-center gap-2">
+                          <img 
+                            src={song.thumbnail} 
+                            alt={song.title}
+                            className="w-10 h-10 rounded object-cover"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                              {song.title}
+                            </p>
+                            <p className="text-xs text-ios-gray truncate">
+                              {song.artists.map(a => a.name).join(', ')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      {spotifyMatchedSongs.length > 5 && (
+                        <p className="text-xs text-ios-gray text-center py-2">
+                          +{spotifyMatchedSongs.length - 5} more songs
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {spotifyImportStatus === 'error' && (
+                <div className="flex flex-col items-center py-6">
+                  <div className="w-12 h-12 rounded-full bg-ios-red/20 flex items-center justify-center mb-3">
+                    <AlertCircle size={24} className="text-ios-red" />
+                  </div>
+                  <p className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Import Failed
+                  </p>
+                  <p className="text-xs text-ios-gray mt-1 text-center">
+                    {spotifyError}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              {spotifyImportStatus === 'idle' && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowSpotifyImportModal(false)
+                      resetSpotifyImport()
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSpotifyImport}
+                    disabled={!spotifyUrl.trim()}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${spotifyUrl.trim() 
+                        ? 'bg-[#1DB954] text-white' 
+                        : 'bg-ios-gray/30 text-ios-gray cursor-not-allowed'}`}
+                  >
+                    Fetch Playlist
+                  </button>
+                </>
+              )}
+
+              {spotifyImportStatus === 'done' && (
+                <>
+                  <button
+                    onClick={resetSpotifyImport}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Import Another
+                  </button>
+                  <button
+                    onClick={handleCreateSpotifyPlaylist}
+                    disabled={spotifyMatchedSongs.length === 0}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active flex items-center justify-center gap-2
+                      ${spotifyMatchedSongs.length > 0 
+                        ? 'bg-[#1DB954] text-white' 
+                        : 'bg-ios-gray/30 text-ios-gray cursor-not-allowed'}`}
+                  >
+                    <Check size={16} />
+                    Create Playlist
+                  </button>
+                </>
+              )}
+
+              {spotifyImportStatus === 'error' && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowSpotifyImportModal(false)
+                      resetSpotifyImport()
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={resetSpotifyImport}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium ios-active bg-[#1DB954] text-white"
+                  >
+                    Try Again
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* YouTube Music Import Modal */}
+      {showYTImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className={`w-full max-w-md rounded-2xl shadow-xl overflow-hidden
+            ${darkMode ? 'bg-ios-card-dark' : 'bg-white'}`}>
+            {/* Header */}
+            <div className={`flex items-center justify-between px-5 py-4 border-b
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[#FF0000] flex items-center justify-center">
+                  <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white">
+                    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+                  </svg>
+                </div>
+                <div>
+                  <h2 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Import from YouTube Music
+                  </h2>
+                  <p className="text-xs text-ios-gray">Paste a playlist URL</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowYTImportModal(false)
+                  resetYTImport()
+                }}
+                className={`p-2 rounded-full ios-active ${darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'}`}
+              >
+                <X size={20} className="text-ios-gray" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-5 space-y-4">
+              {ytImportStatus === 'idle' && (
+                <>
+                  <input
+                    type="text"
+                    placeholder="https://music.youtube.com/playlist?list=..."
+                    value={ytUrl}
+                    onChange={(e) => setYtUrl(e.target.value)}
+                    className={`w-full px-4 py-3 rounded-xl text-sm outline-none
+                      ${darkMode 
+                        ? 'bg-ios-card-secondary-dark text-white placeholder-ios-gray' 
+                        : 'bg-ios-card-secondary text-black placeholder-ios-gray'}
+                      focus:outline-none focus:ring-2 focus:ring-[#FF0000]`}
+                  />
+                  <p className="text-xs text-ios-gray">
+                    Supports public YouTube Music playlists
+                  </p>
+                </>
+              )}
+
+              {ytImportStatus === 'fetching' && (
+                <div className="flex flex-col items-center py-6">
+                  <p className={`text-sm font-medium mb-2 ${darkMode ? 'text-white' : 'text-black'}`}>
+                    {ytProgress.stage || 'Fetching playlist...'}
+                  </p>
+                  <div className="w-full h-2 rounded-full bg-ios-gray/20 overflow-hidden">
+                    <div 
+                      className="h-full bg-[#FF0000] transition-all duration-500 ease-out"
+                      style={{ width: `${ytProgress.current}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-ios-gray mt-2">
+                    Please wait...
+                  </p>
+                </div>
+              )}
+
+              {ytImportStatus === 'done' && ytPlaylistData && (
+                <div className="space-y-4">
+                  {/* Playlist info */}
+                  <div className="flex items-center gap-3">
+                    {ytPlaylistData.thumbnail && (
+                      <img 
+                        src={ytPlaylistData.thumbnail} 
+                        alt={ytPlaylistData.title}
+                        className="w-16 h-16 rounded-lg object-cover"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <p className={`font-semibold truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                        {ytPlaylistData.title}
+                      </p>
+                      <p className="text-xs text-ios-gray">
+                        {ytPlaylistData.songs.length} tracks from YouTube Music
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Track count */}
+                  <div className={`p-3 rounded-xl ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-ios-gray">Tracks</span>
+                      <span className={`text-sm font-medium ${darkMode ? 'text-white' : 'text-black'}`}>
+                        {ytPlaylistData.songs.length} / {ytPlaylistData.songs.length}
+                      </span>
+                    </div>
+                    <div className="h-2 rounded-full bg-ios-gray/20 overflow-hidden">
+                      <div className="h-full bg-[#FF0000] w-full" />
+                    </div>
+                  </div>
+
+                  {/* Preview songs */}
+                  {ytPlaylistData.songs.length > 0 && (
+                    <div className="max-h-[200px] overflow-y-auto space-y-2">
+                      {ytPlaylistData.songs.slice(0, 5).map((song) => (
+                        <div key={song.id} className="flex items-center gap-2">
+                          <img 
+                            src={song.thumbnail || `https://img.youtube.com/vi/${song.id}/hqdefault.jpg`} 
+                            alt={song.title}
+                            className="w-10 h-10 rounded object-cover"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-sm truncate ${darkMode ? 'text-white' : 'text-black'}`}>
+                              {song.title}
+                            </p>
+                            <p className="text-xs text-ios-gray truncate">
+                              {song.artists.map(a => a.name).join(', ')}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      {ytPlaylistData.songs.length > 5 && (
+                        <p className="text-xs text-ios-gray text-center pt-2">
+                          +{ytPlaylistData.songs.length - 5} more tracks
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {ytImportStatus === 'creating' && (
+                <div className="flex flex-col items-center py-6">
+                  <p className={`text-sm font-medium mb-1 ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Creating playlist
+                  </p>
+                  <p className="text-xs text-ios-gray mb-3 text-center truncate max-w-full px-2">
+                    {ytProgress.stage}
+                  </p>
+                  <div className="w-full h-2 rounded-full bg-ios-gray/20 overflow-hidden">
+                    <div 
+                      className="h-full bg-[#FF0000] transition-all duration-300"
+                      style={{ width: `${(ytProgress.current / ytProgress.total) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-ios-gray mt-2">
+                    {ytProgress.current} / {ytProgress.total} tracks
+                  </p>
+                </div>
+              )}
+
+              {ytImportStatus === 'created' && (
+                <div className="py-4 text-center">
+                  <div className="w-16 h-16 rounded-full bg-ios-green/20 flex items-center justify-center mx-auto mb-3">
+                    <Check size={32} className="text-ios-green" />
+                  </div>
+                  <p className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Playlist Created!
+                  </p>
+                  <p className="text-sm text-ios-gray mt-1">
+                    {ytPlaylistData?.songs.length} songs added to your library
+                  </p>
+                </div>
+              )}
+
+              {ytImportStatus === 'error' && (
+                <div className="py-4 text-center">
+                  <div className="w-16 h-16 rounded-full bg-ios-red/20 flex items-center justify-center mx-auto mb-3">
+                    <AlertCircle size={32} className="text-ios-red" />
+                  </div>
+                  <p className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Import Failed
+                  </p>
+                  <p className="text-sm text-ios-red mt-1">
+                    {ytError}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className={`flex gap-3 px-5 py-4 border-t
+              ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+              {ytImportStatus === 'idle' && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowYTImportModal(false)
+                      resetYTImport()
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleYTImport}
+                    disabled={!ytUrl.trim()}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${ytUrl.trim() 
+                        ? 'bg-[#FF0000] text-white' 
+                        : 'bg-ios-gray/30 text-ios-gray cursor-not-allowed'}`}
+                  >
+                    Import
+                  </button>
+                </>
+              )}
+
+              {ytImportStatus === 'fetching' && (
+                <button
+                  disabled
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-ios-gray/30 text-ios-gray cursor-not-allowed"
+                >
+                  Loading...
+                </button>
+              )}
+
+              {ytImportStatus === 'done' && (
+                <>
+                  <button
+                    onClick={resetYTImport}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Import Another
+                  </button>
+                  <button
+                    onClick={createYTPlaylist}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium ios-active bg-[#FF0000] text-white flex items-center justify-center gap-2"
+                  >
+                    <Check size={16} />
+                    Create Playlist
+                  </button>
+                </>
+              )}
+
+              {ytImportStatus === 'creating' && (
+                <button
+                  disabled
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium bg-ios-gray/30 text-ios-gray cursor-not-allowed"
+                >
+                  Creating...
+                </button>
+              )}
+
+              {ytImportStatus === 'created' && (
+                <>
+                  <button
+                    onClick={resetYTImport}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Import Another
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowYTImportModal(false)
+                      resetYTImport()
+                    }}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium ios-active bg-[#FF0000] text-white"
+                  >
+                    Done
+                  </button>
+                </>
+              )}
+
+              {ytImportStatus === 'error' && (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowYTImportModal(false)
+                      resetYTImport()
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl text-sm font-medium ios-active
+                      ${darkMode ? 'bg-ios-card-secondary-dark text-white' : 'bg-ios-card-secondary text-black'}`}
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={resetYTImport}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-medium ios-active bg-[#FF0000] text-white"
+                  >
+                    Try Again
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
