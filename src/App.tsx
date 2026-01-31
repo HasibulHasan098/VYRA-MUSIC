@@ -402,7 +402,7 @@ export default function App() {
 
   return (
     <div className={`h-screen flex flex-col ${darkMode ? 'dark bg-ios-bg-dark' : 'bg-ios-bg'}`}>
-      <TitleBar />
+      {!isFullscreen && <TitleBar />}
       
       {/* Offline Notification */}
       {showOfflineNotification && isOffline && (

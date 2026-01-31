@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://vyra.fasthand.study/">
-    <img src="https://img.shields.io/badge/Download-v1.1.0-blue?style=flat-square" alt="Download">
+    <img src="https://img.shields.io/badge/Download-v1.1.1-blue?style=flat-square" alt="Download">
   </a>
   <a href="https://github.com/HasibulHasan098/VYRA-MUSIC/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HasibulHasan098/VYRA-MUSIC?style=flat-square" alt="License">
@@ -45,31 +45,13 @@
 - 🎧 **Spotify Import** — Import playlists and albums from Spotify
 - 📺 **YouTube Music Import** — Import playlists from YouTube Music
 
-## 🆕 What's New in v1.1.0
+## 🆕 What's New in v1.1.1
 
-### 🎉 Big Update!
+### 🎉 Performance & Usability Update!
 
-#### Playlist Import Features
-- 🎧 **Spotify Import** — Import playlists and albums from Spotify URLs
-  - Paste any public Spotify playlist or album URL
-  - Preview tracks before importing with song thumbnails
-  - Automatic matching to YouTube Music catalog
-  - Progress bar showing import status
-- 📺 **YouTube Music Import** — Import playlists from YouTube Music URLs
-  - Paste any public YouTube Music playlist URL
-  - Preview all tracks before creating playlist
-  - One-click import to your library
-
-#### Playlist Management
-- ✏️ **Rename Playlists** — Right-click any playlist to rename it
-- 🗑️ **Delete Playlists** — Right-click to delete playlists with confirmation
-- 📋 **Context Menu** — New right-click menu for playlist options
-- ⚙️ **Playlist Options** — Three-dot menu in playlist view for quick actions
-
-#### UI Improvements
-- 🎨 **Import Buttons** — Quick access import buttons in Library (Spotify & YouTube icons)
-- 📊 **Import Preview** — See playlist info and track list before importing
-- 🔄 **Progress Tracking** — Real-time progress bars during import
+- 🔄 **Queue System Updated** — Improved queue management for better playback control
+- 🔍 **Recent Search Added** — Quick access to your recent searches for better usability
+- ⚡ **Optimized Performance** — Windows Efficiency Mode enabled for lower CPU/power usage
 
 
 ## 🚀 Installation
@@ -77,7 +59,7 @@
 ### Windows
 
 1. Download the latest installer from [vyra.fasthand.study](https://vyra.fasthand.study/)
-2. Run `VYRA_1.1.0_x64-setup.exe`
+2. Run `VYRA_1.1.1_x64-setup.exe`
 3. Follow the installation wizard
 
 ### Build from Source

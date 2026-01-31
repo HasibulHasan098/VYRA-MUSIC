@@ -16,7 +16,77 @@ const wasPlayedRecently = (trackId: string, recentTracks: RecentlyPlayedTrack[])
   )
 }
 
-// Helper function to extend queue with related songs (avoiding recent duplicates)
+// Helper function to normalize song titles for comparison
+// Removes common prefixes/suffixes and normalizes for better matching
+const normalizeTitle = (title: string): string => {
+  if (!title) return ''
+  
+  let normalized = title.toLowerCase().trim()
+  
+  // Remove common prefixes like "Artist - " or "Artist: "
+  normalized = normalized.replace(/^[^-:]+[-:]\s*/, '')
+  
+  // Remove common suffixes in parentheses like "(with...", "(Lyri...", "(Official...", etc.
+  // Handle both complete parentheses and truncated ones (missing closing paren)
+  normalized = normalized.replace(/\s*\([^)]*\)\s*$/, '') // Complete parentheses
+  normalized = normalized.replace(/\s*\([^(]*$/, '') // Truncated parentheses (no closing paren)
+  normalized = normalized.replace(/\s*\[[^\]]*\]\s*$/, '') // Square brackets
+  normalized = normalized.replace(/\s*\[[^[]*$/, '') // Truncated square brackets
+  
+  // Remove common suffixes like " - Official", " - Audio", etc.
+  normalized = normalized.replace(/\s*-\s*(official|audio|video|lyric|lyrics|remix|remastered).*$/i, '')
+  
+  // Remove extra whitespace and punctuation at the end
+  normalized = normalized.replace(/[.,;:!?]+$/, '')
+  normalized = normalized.trim()
+  
+  return normalized
+}
+
+// Helper function to check if two titles are similar (same core title)
+const isSameTitle = (title1: string, title2: string): boolean => {
+  const norm1 = normalizeTitle(title1)
+  const norm2 = normalizeTitle(title2)
+  
+  // If either is empty after normalization, don't match
+  if (!norm1 || !norm2) return false
+  
+  // Exact match after normalization (most common case)
+  if (norm1 === norm2) return true
+  
+  // For short titles (less than 4 chars), only exact match
+  if (norm1.length < 4 || norm2.length < 4) {
+    return norm1 === norm2
+  }
+  
+  // Check if one title starts with the other (for cases like "love me" vs "love me (feat...)")
+  // This handles truncated titles better
+  if (norm1.startsWith(norm2) || norm2.startsWith(norm1)) {
+    const shorter = norm1.length < norm2.length ? norm1 : norm2
+    const longer = norm1.length >= norm2.length ? norm1 : norm2
+    // The shorter should be at least 80% of longer, or at least 5 characters
+    if (shorter.length >= 5 && shorter.length / longer.length >= 0.8) {
+      return true
+    }
+  }
+  
+  // Check if titles are very similar (for minor spelling variations)
+  // Only if both are at least 5 characters
+  if (norm1.length >= 5 && norm2.length >= 5) {
+    // Calculate similarity - if one contains the other and they're close in length
+    if (norm1.includes(norm2) || norm2.includes(norm1)) {
+      const shorter = norm1.length < norm2.length ? norm1 : norm2
+      const longer = norm1.length >= norm2.length ? norm1 : norm2
+      if (shorter.length / longer.length >= 0.85) {
+        return true
+      }
+    }
+  }
+  
+  return false
+}
+
+// Spotify-like queue extension with intelligent filtering
 const extendQueue = async (
   trackId: string,
   getState: () => any,
@@ -26,20 +96,91 @@ const extendQueue = async (
     const relatedSongs = await youtube.getRadio(trackId)
     
     if (relatedSongs.length > 0) {
-      const { queue: currentQueue, queueIndex: currentIndex, recentlyPlayedTracks } = getState()
+      const { queue: currentQueue, queueIndex: currentIndex, recentlyPlayedTracks, currentTrack, recentlyPlayed } = getState()
       const existingIds = new Set(currentQueue.map((s: Song) => s.id))
       
-      // Filter out songs that are already in queue OR were played in last 30 minutes
-      const newSongs = relatedSongs.filter(s => 
-        !existingIds.has(s.id) && !wasPlayedRecently(s.id, recentlyPlayedTracks)
-      )
+      // Get context for smart filtering
+      const queueTitles = currentQueue.map((s: Song) => s.title)
+      const currentTitle = currentTrack ? currentTrack.title : null
+      const currentArtists = currentTrack ? new Set(currentTrack.artists.map((a: { name: string }) => a.name.toLowerCase())) : new Set()
       
-      if (newSongs.length > 0) {
+      // Get recently played artists (last 5 songs) for diversity
+      const recentArtists = new Set<string>()
+      recentlyPlayed.slice(0, 5).forEach((song: Song) => {
+        song.artists.forEach((a: { name: string }) => recentArtists.add(a.name.toLowerCase()))
+      })
+      
+      // Get upcoming artists in queue for diversity
+      const upcomingArtists = new Set<string>()
+      currentQueue.slice(currentIndex + 1, currentIndex + 4).forEach((song: Song) => {
+        song.artists.forEach((a: { name: string }) => upcomingArtists.add(a.name.toLowerCase()))
+      })
+      
+      // Spotify-like filtering: prioritize variety and quality
+      const scoredSongs = relatedSongs
+        .map(song => {
+          // Base score
+          let score = 100
+          
+          // Penalize duplicates
+          if (existingIds.has(song.id)) return null
+          if (wasPlayedRecently(song.id, recentlyPlayedTracks)) return null
+          
+          // Heavy penalty for same title (Spotify avoids this)
+          if (currentTitle && isSameTitle(currentTitle, song.title)) {
+            score -= 100 // Effectively filters out
+          }
+          
+          // Check if same title exists in queue
+          const hasSameTitleInQueue = queueTitles.some((queueTitle: string) => isSameTitle(queueTitle, song.title))
+          if (hasSameTitleInQueue) {
+            score -= 80 // Strong penalty
+          }
+          
+          // Penalize same artist as current (but allow some variety)
+          const songArtists = new Set(song.artists.map(a => a.name.toLowerCase()))
+          const isSameArtist = Array.from(songArtists).some(artist => currentArtists.has(artist))
+          if (isSameArtist) {
+            score -= 30 // Moderate penalty - allow some same artist but prefer variety
+          }
+          
+          // Penalize if artist was recently played (encourage diversity)
+          const wasRecentArtist = Array.from(songArtists).some(artist => recentArtists.has(artist))
+          if (wasRecentArtist) {
+            score -= 20
+          }
+          
+          // Penalize if same artist appears in next few songs (avoid clustering)
+          const isUpcomingArtist = Array.from(songArtists).some(artist => upcomingArtists.has(artist))
+          if (isUpcomingArtist) {
+            score -= 15
+          }
+          
+          // Bonus for different artists (encourage discovery)
+          if (!isSameArtist && !wasRecentArtist) {
+            score += 10
+          }
+          
+          return { song, score }
+        })
+        .filter((item): item is { song: Song; score: number } => item !== null && item.score > 0)
+        .sort((a, b) => b.score - a.score) // Sort by score descending
+      
+      if (scoredSongs.length > 0) {
         const currentUpcoming = currentQueue.length - currentIndex - 1
         
         // Always add songs if we have fewer than 6 upcoming
         if (currentUpcoming < 6) {
-          setState({ queue: [...currentQueue, ...newSongs.slice(0, Math.max(6, newSongs.length))] })
+          // Take top scored songs (Spotify typically shows 10-15 next songs)
+          // Limit queue size to prevent memory issues (max 100 songs)
+          const maxQueueSize = 100
+          const currentQueueSize = currentQueue.length
+          const availableSlots = maxQueueSize - currentQueueSize
+          
+          if (availableSlots > 0) {
+            const topSongs = scoredSongs.slice(0, Math.min(8, availableSlots, scoredSongs.length)).map(item => item.song)
+            setState({ queue: [...currentQueue, ...topSongs] })
+          }
         }
       }
     }
@@ -166,6 +307,7 @@ interface PlayerState {
   recentlyPlayed: Song[]
   recentlyPlayedTracks: RecentlyPlayedTrack[] // Track IDs with timestamps for duplicate prevention
   savedPosition: number // Save position in seconds for restore
+  lastDiscordUpdate: number // Last second Discord was updated (to prevent duplicate updates)
   
   initAudio: () => void
   updateEqualizer: () => void
@@ -211,6 +353,7 @@ export const usePlayerStore = create<PlayerState>()(
   recentlyPlayed: [],
   recentlyPlayedTracks: [],
   savedPosition: 0,
+  lastDiscordUpdate: -1,
 
   initAudio: () => {
     if (get().audioElement) return
@@ -257,7 +400,15 @@ export const usePlayerStore = create<PlayerState>()(
       console.warn('Web Audio API not available for equalizer')
     }
     
+    // Throttle timeupdate to reduce CPU usage (update every 250ms instead of every frame)
+    let lastUpdateTime = 0
+    const updateInterval = 250 // ms
+    
     audio.addEventListener('timeupdate', () => {
+      const now = Date.now()
+      if (now - lastUpdateTime < updateInterval) return
+      lastUpdateTime = now
+      
       const duration = audio.duration || 0
       const progress = duration > 0 ? audio.currentTime / duration : 0
       set({ progress, duration })
@@ -267,8 +418,11 @@ export const usePlayerStore = create<PlayerState>()(
         updateMediaSession(currentTrack, isPlaying, duration, audio.currentTime)
         
         // Update Discord every 15 seconds to avoid rate limiting
-        if (isPlaying && Math.floor(audio.currentTime) % 15 === 0) {
+        const currentSecond = Math.floor(audio.currentTime)
+        const { lastDiscordUpdate } = get()
+        if (isPlaying && currentSecond % 15 === 0 && currentSecond !== lastDiscordUpdate) {
           updateDiscordPresence(currentTrack, isPlaying, duration, audio.currentTime)
+          set({ lastDiscordUpdate: currentSecond })
         }
       }
     })
@@ -424,14 +578,37 @@ export const usePlayerStore = create<PlayerState>()(
     set({ currentTrack: track, isLoading: true, error: null, progress: 0, isPlaying: false, savedPosition: 0 })
     
     // Check if track is in queue and find its index
-    const trackIndex = queue.findIndex(s => s.id === track.id)
+    let trackIndex = queue.findIndex(s => s.id === track.id)
     
-    if (trackIndex === -1 || queue.length === 0) {
+    // Spotify-like queue cleanup: Remove songs with same title AND similar context
+    // This creates a cleaner, more diverse queue experience
+    const filteredQueue = queue.filter(s => {
+      // Always keep the current track by ID
+      if (s.id === track.id) return true
+      
+      // Remove songs with the same title (Spotify avoids this)
+      if (isSameTitle(track.title, s.title)) return false
+      
+      // Keep the song - it's different enough
+      return true
+    })
+    
+    // Recalculate track index after filtering
+    if (trackIndex !== -1) {
+      // Count how many songs before the track were removed
+      const removedBefore = queue.slice(0, trackIndex).filter(s => 
+        s.id !== track.id && isSameTitle(track.title, s.title)
+      ).length
+      trackIndex = trackIndex - removedBefore
+    }
+    
+    // Add current track to filtered queue if not already there
+    if (trackIndex === -1 || filteredQueue.length === 0) {
       // Track not in queue - create new queue with this track
       set({ queue: [track], queueIndex: 0 })
     } else {
-      // Track is in queue - update the index
-      set({ queueIndex: trackIndex })
+      // Track is in queue - update the queue and index
+      set({ queue: filteredQueue, queueIndex: trackIndex })
     }
     
     // Always ensure we have at least 6 upcoming songs in queue
@@ -629,16 +806,51 @@ export const usePlayerStore = create<PlayerState>()(
             try {
               const relatedSongs = await youtube.getRadio(currentTrack.id)
               if (relatedSongs.length > 0) {
-                // Filter out songs already in queue to avoid duplicates
+                const { recentlyPlayedTracks, recentlyPlayed } = get()
                 const existingIds = new Set(queue.map(s => s.id))
-                const newSongs = relatedSongs.filter(s => !existingIds.has(s.id))
+                const currentArtists = new Set(currentTrack.artists.map((a: { name: string }) => a.name.toLowerCase()))
                 
-                if (newSongs.length > 0) {
-                  // Add new songs to queue and play the first one
-                  const newQueue = [...queue, ...newSongs]
-                  set({ queue: newQueue, queueIndex: queue.length })
-                  await get().setCurrentTrack(newSongs[0])
-                  return
+                // Get recently played artists for diversity
+                const recentArtists = new Set<string>()
+                recentlyPlayed.slice(0, 5).forEach((song: Song) => {
+                  song.artists.forEach((a: { name: string }) => recentArtists.add(a.name.toLowerCase()))
+                })
+                
+                // Spotify-like filtering for next track
+                const scoredSongs = relatedSongs
+                  .map(song => {
+                    let score = 100
+                    
+                    if (existingIds.has(song.id)) return null
+                    if (wasPlayedRecently(song.id, recentlyPlayedTracks)) return null
+                    if (isSameTitle(currentTrack.title, song.title)) return null // Never play same title
+                    
+                    const songArtists = new Set(song.artists.map((a: { name: string }) => a.name.toLowerCase()))
+                    const isSameArtist = Array.from(songArtists).some(artist => currentArtists.has(artist))
+                    const wasRecentArtist = Array.from(songArtists).some(artist => recentArtists.has(artist))
+                    
+                    if (isSameArtist) score -= 25
+                    if (wasRecentArtist) score -= 15
+                    if (!isSameArtist && !wasRecentArtist) score += 15
+                    
+                    return { song, score }
+                  })
+                  .filter((item): item is { song: Song; score: number } => item !== null && item.score > 0)
+                  .sort((a, b) => b.score - a.score)
+                
+                if (scoredSongs.length > 0) {
+                  // Add top scored songs and play the best one
+                  // Limit queue size to prevent memory issues (max 100 songs)
+                  const maxQueueSize = 100
+                  const availableSlots = maxQueueSize - queue.length
+                  
+                  if (availableSlots > 0) {
+                    const topSongs = scoredSongs.slice(0, Math.min(10, availableSlots)).map(item => item.song)
+                    const newQueue = [...queue, ...topSongs]
+                    set({ queue: newQueue, queueIndex: queue.length })
+                    await get().setCurrentTrack(topSongs[0])
+                    return
+                  }
                 }
               }
             } catch {
@@ -711,8 +923,8 @@ export const usePlayerStore = create<PlayerState>()(
     const { recentlyPlayed, recentlyPlayedTracks } = get()
     // Remove if already exists (to move to top)
     const filtered = recentlyPlayed.filter(s => s.id !== track.id)
-    // Add to beginning, limit to 100
-    const updated = [track, ...filtered].slice(0, 100)
+    // Add to beginning, limit to 50 (reduced from 100 for better performance)
+    const updated = [track, ...filtered].slice(0, 50)
     
     // Add to timestamp tracking for duplicate prevention
     const newRecentTrack: RecentlyPlayedTrack = {

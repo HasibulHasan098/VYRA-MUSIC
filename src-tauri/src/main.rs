@@ -298,6 +298,41 @@ mod taskbar_buttons {
     }
 }
 
+// Windows Efficiency Mode (EcoQoS) support
+#[cfg(target_os = "windows")]
+mod efficiency_mode {
+    use windows::Win32::System::Threading::{
+        GetCurrentProcess, SetPriorityClass, SetProcessInformation,
+        IDLE_PRIORITY_CLASS, PROCESS_POWER_THROTTLING_STATE, ProcessPowerThrottling,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+    };
+    
+    /// Enable Windows Efficiency Mode (EcoQoS) for the current process.
+    /// This reduces power consumption and CPU usage, ideal for music player apps.
+    pub fn enable_efficiency_mode() {
+        unsafe {
+            let process = GetCurrentProcess();
+            
+            // Set process to idle priority class (lowest priority)
+            let _ = SetPriorityClass(process, IDLE_PRIORITY_CLASS);
+            
+            // Enable EcoQoS (Windows 11 Efficiency Mode)
+            let throttle_state = PROCESS_POWER_THROTTLING_STATE {
+                Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+                ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+                StateMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED,
+            };
+            
+            let _ = SetProcessInformation(
+                process,
+                ProcessPowerThrottling,
+                &throttle_state as *const _ as *const std::ffi::c_void,
+                std::mem::size_of::<PROCESS_POWER_THROTTLING_STATE>() as u32,
+            );
+        }
+    }
+}
+
 struct AppState {
     client: Client,
     visitor_data: Mutex<Option<String>>,
@@ -1692,6 +1727,10 @@ async fn handle_audio_proxy_with_cache(
 
 
 fn main() {
+    // Enable Windows Efficiency Mode (EcoQoS) for reduced power consumption
+    #[cfg(target_os = "windows")]
+    efficiency_mode::enable_efficiency_mode();
+    
     let client = Client::builder()
         .cookie_store(true)
         .timeout(std::time::Duration::from_secs(30))

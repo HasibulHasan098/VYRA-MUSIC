@@ -45,6 +45,7 @@ interface AppState {
   searchQuery: string
   searchSuggestions: string[]
   searchResults: SearchResult | null
+  recentSearches: string[]
   homeSections: HomeSection[]
   isLoadingHome: boolean
   isLoadingSearch: boolean
@@ -112,6 +113,8 @@ interface AppState {
   setSearchQuery: (query: string) => void
   fetchSearchSuggestions: (query: string) => Promise<void>
   performSearch: (query: string) => Promise<void>
+  addRecentSearch: (query: string) => void
+  removeRecentSearch: (query: string) => void
   fetchHome: () => Promise<void>
   fetchRecommendations: (videoIds: string[]) => Promise<void>
   openArtist: (artistId: string) => Promise<void>
@@ -182,6 +185,7 @@ export const useAppStore = create<AppState>()(
       searchQuery: '',
       searchSuggestions: [],
       searchResults: null,
+      recentSearches: [],
       homeSections: [],
       isLoadingHome: false,
       isLoadingSearch: false,
@@ -312,9 +316,26 @@ export const useAppStore = create<AppState>()(
         try {
           const results = await youtube.searchAll(query)
           set({ searchResults: results, isLoadingSearch: false })
+          // Add to recent searches (Spotify-like behavior)
+          get().addRecentSearch(query.trim())
         } catch {
           set({ searchResults: null, isLoadingSearch: false })
         }
+      },
+
+      addRecentSearch: (query) => {
+        const { recentSearches } = get()
+        // Remove if already exists (to move to top)
+        const filtered = recentSearches.filter(s => s.toLowerCase() !== query.toLowerCase())
+        // Add to beginning, limit to 5 (Spotify shows last 5)
+        const updated = [query, ...filtered].slice(0, 5)
+        set({ recentSearches: updated })
+      },
+
+      removeRecentSearch: (query) => {
+        const { recentSearches } = get()
+        const filtered = recentSearches.filter(s => s.toLowerCase() !== query.toLowerCase())
+        set({ recentSearches: filtered })
       },
 
       fetchHome: async () => {
@@ -893,7 +914,8 @@ export const useAppStore = create<AppState>()(
         inAppKeybinds: state.inAppKeybinds,
         globalKeybinds: state.globalKeybinds,
         userPlaylists: state.userPlaylists,
-        followedArtists: state.followedArtists
+        followedArtists: state.followedArtists,
+        recentSearches: state.recentSearches
       })
     }
   )

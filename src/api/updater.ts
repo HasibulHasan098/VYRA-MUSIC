@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/core'
 
 const GITHUB_REPO = 'HasibulHasan098/VYRA-MUSIC'
-const CURRENT_VERSION = '1.1.0'
+const CURRENT_VERSION = '1.1.1'
 
 export interface ReleaseInfo {
   version: string
@@ -20,7 +20,7 @@ export interface ReleaseInfo {
 export function compareVersions(current: string, latest: string): number {
   const currentParts = current.replace(/^v/, '').split('.').map(Number)
   const latestParts = latest.replace(/^v/, '').split('.').map(Number)
-  
+
   for (let i = 0; i < Math.max(currentParts.length, latestParts.length); i++) {
     const a = currentParts[i] || 0
     const b = latestParts[i] || 0
@@ -41,7 +41,7 @@ export async function checkForUpdates(): Promise<ReleaseInfo | null> {
       const release = await invoke<any>('check_for_updates')
       return parseRelease(release)
     }
-    
+
     // Fallback for browser (won't work due to CORS, but kept for completeness)
     const response = await fetch(
       `https://api.github.com/repos/${GITHUB_REPO}/releases/latest`,
@@ -51,12 +51,12 @@ export async function checkForUpdates(): Promise<ReleaseInfo | null> {
         }
       }
     )
-    
+
     if (response.ok) {
       const release = await response.json()
       return parseRelease(release)
     }
-    
+
     return null
   } catch (error) {
     console.error('Failed to check for updates:', error)
@@ -67,26 +67,26 @@ export async function checkForUpdates(): Promise<ReleaseInfo | null> {
 function parseRelease(release: any): ReleaseInfo {
   // Find Windows installer asset (prefer exe setup, then msi)
   const assets = release.assets || []
-  
+
   // Look for setup exe first
-  let downloadAsset = assets.find((asset: any) => 
+  let downloadAsset = assets.find((asset: any) =>
     asset.name.toLowerCase().includes('setup') && asset.name.endsWith('.exe')
   )
-  
+
   // Then try any exe
   if (!downloadAsset) {
     downloadAsset = assets.find((asset: any) => asset.name.endsWith('.exe'))
   }
-  
+
   // Then try msi
   if (!downloadAsset) {
     downloadAsset = assets.find((asset: any) => asset.name.endsWith('.msi'))
   }
-  
+
   // Get version from tag_name (handles both "v1.0.2" and "1.0.2" formats)
   const tagName = release.tag_name || ''
   const version = tagName.replace(/^v/, '') || release.name?.replace(/^v/, '') || '0.0.0'
-  
+
   return {
     version,
     tagName,
@@ -101,11 +101,11 @@ function parseRelease(release: any): ReleaseInfo {
 // Check if update is available
 export async function isUpdateAvailable(): Promise<{ available: boolean; release: ReleaseInfo | null }> {
   const release = await checkForUpdates()
-  
+
   if (!release) {
     return { available: false, release: null }
   }
-  
+
   const comparison = compareVersions(CURRENT_VERSION, release.version)
   return {
     available: comparison < 0,
@@ -123,12 +123,12 @@ export async function downloadAndInstallUpdate(downloadUrl: string): Promise<boo
   try {
     if (typeof window !== 'undefined' && '__TAURI__' in window) {
       const { invoke } = await import('@tauri-apps/api/core')
-      
+
       // Download the update file
       await invoke('download_and_install_update', { url: downloadUrl })
       return true
     }
-    
+
     // Fallback: open download URL in browser
     window.open(downloadUrl, '_blank')
     return true
@@ -141,7 +141,7 @@ export async function downloadAndInstallUpdate(downloadUrl: string): Promise<boo
 // Open releases page in browser
 export async function openReleasesPage(): Promise<void> {
   const url = `https://github.com/${GITHUB_REPO}/releases`
-  
+
   try {
     if (typeof window !== 'undefined' && '__TAURI__' in window) {
       const { invoke } = await import('@tauri-apps/api/core')

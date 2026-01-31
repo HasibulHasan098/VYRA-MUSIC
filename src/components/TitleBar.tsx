@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
-import { Search, Settings, X, Minus, Square, Download, FileText, ArrowDownCircle, Loader2 } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { Search, Settings, X, Minus, Square, Download, FileText, ArrowDownCircle, Loader2, Clock } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { usePlayerStore } from '../store/playerStore'
 import { isUpdateAvailable, ReleaseInfo, downloadAndInstallUpdate, openReleasesPage } from '../api/updater'
@@ -40,13 +41,18 @@ async function closeWindow(minimizeToTray: boolean, savePosition: () => void) {
 }
 
 export default function TitleBar() {
-  const { setView, performSearch, searchQuery, setSearchQuery, darkMode, currentView, minimizeToTray, closeLyrics } = useAppStore()
+  const { setView, performSearch, searchQuery, setSearchQuery, darkMode, currentView, minimizeToTray, closeLyrics, recentSearches, removeRecentSearch } = useAppStore()
   const { savePosition } = usePlayerStore()
   const [localQuery, setLocalQuery] = useState(searchQuery)
   const [updateAvailable, setUpdateAvailable] = useState(false)
   const [updateInfo, setUpdateInfo] = useState<ReleaseInfo | null>(null)
   const [showReleaseNotes, setShowReleaseNotes] = useState(false)
   const [downloadingUpdate, setDownloadingUpdate] = useState(false)
+  const [showRecentSearches, setShowRecentSearches] = useState(false)
+  const [isSearchFocused, setIsSearchFocused] = useState(false)
+  const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0, width: 0 })
+  const searchContainerRef = useRef<HTMLDivElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   // Check for updates on mount
   useEffect(() => {
@@ -78,17 +84,44 @@ export default function TitleBar() {
     setDownloadingUpdate(false)
   }
 
-  // Auto-search as user types (debounced)
+  // Auto-search as user types (debounced) - increased to 500ms for better performance
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localQuery.trim()) {
         performSearch(localQuery)
+        setShowRecentSearches(false) // Hide recent searches when typing
       } else {
         setSearchQuery('')
+        // Show recent searches if focused and not typing
+        if (isSearchFocused) {
+          setShowRecentSearches(true)
+        }
       }
-    }, 400)
+    }, 500) // Increased from 400ms to 500ms for better performance
     return () => clearTimeout(timer)
-  }, [localQuery, performSearch, setSearchQuery])
+  }, [localQuery, performSearch, setSearchQuery, isSearchFocused])
+
+  // Handle click outside to close recent searches
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        // Check if click is on the portal dropdown
+        const target = event.target as HTMLElement
+        if (!target.closest('[data-recent-searches-dropdown]')) {
+          setShowRecentSearches(false)
+          setIsSearchFocused(false)
+        }
+      }
+    }
+
+    if (showRecentSearches) {
+      // Use a small delay to allow click events to register
+      setTimeout(() => {
+        document.addEventListener('mousedown', handleClickOutside)
+      }, 100)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showRecentSearches])
 
   // Sync local query with store
   useEffect(() => {
@@ -98,12 +131,73 @@ export default function TitleBar() {
   const clearSearch = () => {
     setLocalQuery('')
     setSearchQuery('')
+    if (isSearchFocused && recentSearches.length > 0) {
+      setShowRecentSearches(true)
+    }
+  }
+
+  const handleRecentSearchClick = (query: string) => {
+    // Remove from recent searches (Spotify behavior)
+    removeRecentSearch(query)
+    // Perform the search
+    setLocalQuery(query)
+    setSearchQuery(query)
+    performSearch(query)
+    setShowRecentSearches(false)
+  }
+
+  const handleSearchFocus = () => {
+    setIsSearchFocused(true)
+    // Calculate dropdown position
+    if (searchContainerRef.current) {
+      const rect = searchContainerRef.current.getBoundingClientRect()
+      setDropdownPosition({
+        top: rect.bottom + 4,
+        left: rect.left,
+        width: rect.width
+      })
+      // Show recent searches if there's no query and we have recent searches
+      if (!localQuery.trim() && recentSearches.length > 0) {
+        setShowRecentSearches(true)
+      }
+    }
+  }
+
+  // Update dropdown position on window resize
+  useEffect(() => {
+    const updatePosition = () => {
+      if (searchContainerRef.current && showRecentSearches) {
+        const rect = searchContainerRef.current.getBoundingClientRect()
+        setDropdownPosition({
+          top: rect.bottom + 4,
+          left: rect.left,
+          width: rect.width
+        })
+      }
+    }
+    window.addEventListener('resize', updatePosition)
+    window.addEventListener('scroll', updatePosition, true)
+    return () => {
+      window.removeEventListener('resize', updatePosition)
+      window.removeEventListener('scroll', updatePosition, true)
+    }
+  }, [showRecentSearches])
+
+  const handleSearchBlur = () => {
+    // Don't hide immediately - let click outside handler do it
+    // This prevents hiding when clicking on a recent search item
+    setTimeout(() => {
+      if (!searchContainerRef.current?.contains(document.activeElement)) {
+        setIsSearchFocused(false)
+        setShowRecentSearches(false)
+      }
+    }, 200)
   }
 
   return (
     <div 
       data-tauri-drag-region
-      className={`h-fib-55 flex items-center px-fib-13 border-b
+      className={`h-fib-55 flex items-center px-fib-13 border-b relative z-[100]
         ${darkMode ? 'bg-transparent border-ios-separator-dark' : 'bg-transparent border-ios-separator'}`}
     >
       {/* Left side - Update button or empty spacer */}
@@ -131,23 +225,102 @@ export default function TitleBar() {
       </div>
 
       {/* Search bar - centered */}
-      <div data-tauri-drag-region className="flex-1 flex justify-center items-center h-full">
-        <div className={`flex items-center gap-fib-8 px-fib-13 py-fib-8 rounded-fib-34 w-full max-w-md
-          ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
-          <Search size={18} className="text-ios-gray flex-shrink-0" />
-          <input
-            type="text"
-            placeholder="Search songs, artists, albums..."
-            value={localQuery}
-            onChange={(e) => { closeLyrics(); setLocalQuery(e.target.value) }}
-            className={`flex-1 bg-transparent outline-none text-fib-13
-              ${darkMode ? 'text-white placeholder-ios-gray' : 'text-black placeholder-ios-gray'}`}
-          />
-          {localQuery && (
-            <button onClick={clearSearch} className="p-fib-3 ios-active">
-              <X size={16} className="text-ios-gray" />
-            </button>
-          )}
+      <div data-tauri-drag-region className="flex-1 flex justify-center items-center h-full relative z-[100]">
+        <div 
+          ref={searchContainerRef} 
+          className="w-full max-w-md relative"
+          onClick={() => {
+            // Show recent searches when clicking the search container
+            if (!localQuery.trim() && recentSearches.length > 0) {
+              if (searchContainerRef.current) {
+                const rect = searchContainerRef.current.getBoundingClientRect()
+                setDropdownPosition({
+                  top: rect.bottom + 4,
+                  left: rect.left,
+                  width: rect.width
+                })
+              }
+              setShowRecentSearches(true)
+              setIsSearchFocused(true)
+            }
+          }}
+        >
+          <div className={`flex items-center gap-fib-8 px-fib-13 py-fib-8 rounded-fib-34 w-full relative z-[101]
+            ${darkMode ? 'bg-ios-card-secondary-dark' : 'bg-ios-card-secondary'}`}>
+            <Search size={18} className="text-ios-gray flex-shrink-0" />
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search songs, artists, albums..."
+              value={localQuery}
+              onChange={(e) => { 
+                closeLyrics()
+                setLocalQuery(e.target.value)
+                if (e.target.value.trim()) {
+                  setShowRecentSearches(false)
+                } else if (isSearchFocused && recentSearches.length > 0) {
+                  // Update position when showing
+                  if (searchContainerRef.current) {
+                    const rect = searchContainerRef.current.getBoundingClientRect()
+                    setDropdownPosition({
+                      top: rect.bottom + 4,
+                      left: rect.left,
+                      width: rect.width
+                    })
+                  }
+                  setShowRecentSearches(true)
+                }
+              }}
+              onFocus={handleSearchFocus}
+              onBlur={handleSearchBlur}
+              className={`flex-1 bg-transparent outline-none text-fib-13
+                ${darkMode ? 'text-white placeholder-ios-gray' : 'text-black placeholder-ios-gray'}`}
+            />
+            {localQuery && (
+              <button onClick={clearSearch} className="p-fib-3 ios-active">
+                <X size={16} className="text-ios-gray" />
+              </button>
+            )}
+          </div>
+
+          {/* Recent Searches Dropdown - Spotify style (rendered via portal) */}
+          {showRecentSearches && recentSearches.length > 0 && !localQuery.trim() && dropdownPosition.width > 0 && typeof document !== 'undefined' && 
+            createPortal(
+              <div 
+                data-recent-searches-dropdown
+                className={`fixed rounded-2xl shadow-2xl overflow-hidden
+                  ${darkMode ? 'bg-ios-card-dark border border-ios-separator-dark' : 'bg-white border border-ios-separator'}`}
+                style={{ 
+                  top: `${dropdownPosition.top}px`,
+                  left: `${dropdownPosition.left}px`,
+                  width: `${dropdownPosition.width}px`,
+                  zIndex: 99999
+                }}
+                onClick={(e) => e.stopPropagation()}
+                onMouseDown={(e) => e.stopPropagation()}
+              >
+                <div className={`px-fib-13 py-fib-8 border-b ${darkMode ? 'border-ios-separator-dark' : 'border-ios-separator'}`}>
+                  <h3 className={`text-fib-13 font-semibold ${darkMode ? 'text-white' : 'text-black'}`}>
+                    Recent searches
+                  </h3>
+                </div>
+                <div className="py-fib-3">
+                  {recentSearches.map((query, index) => (
+                    <button
+                      key={index}
+                      onClick={() => handleRecentSearchClick(query)}
+                      className={`w-full flex items-center gap-fib-13 px-fib-13 py-fib-8 text-left ios-active ios-transition
+                        ${darkMode ? 'hover:bg-white/5 text-white' : 'hover:bg-black/5 text-black'}`}
+                    >
+                      <Clock size={16} className="text-ios-gray flex-shrink-0" />
+                      <span className="flex-1 text-fib-13 truncate">{query}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>,
+              document.body
+            )
+          }
         </div>
       </div>
 

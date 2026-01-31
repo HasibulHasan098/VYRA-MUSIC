@@ -5824,7 +5824,7 @@ dependencies = [
 
 [[package]]
 name = "vyra"
-version = "1.1.0"
+version = "1.1.1"
 dependencies = [
  "bytes",
  "dirs 5.0.1",
